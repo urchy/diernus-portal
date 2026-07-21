@@ -6,14 +6,17 @@ import { verifyJwt } from './crypto.js';
 const COOKIE_NAME = 'diernus_session';
 
 export function setSessionCookie(headers: Headers, token: string, secure: boolean): void {
+  // SameSite=None is required so the cookie is sent on cross-origin fetch
+  // from the Pages frontend (diernus-portal.pages.dev) to this Worker
+  // (diernus-portal-api.workers.dev). SameSite=None requires Secure=true.
   const parts = [
     `${COOKIE_NAME}=${token}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    'SameSite=None',
     'Max-Age=604800', // 7 days
   ];
-  if (secure) parts.push('Secure');
+  if (secure || parts.includes('SameSite=None')) parts.push('Secure');
   headers.append('Set-Cookie', parts.join('; '));
 }
 
@@ -22,10 +25,10 @@ export function clearSessionCookie(headers: Headers, secure: boolean): void {
     `${COOKIE_NAME}=`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    'SameSite=None',
     'Max-Age=0',
   ];
-  if (secure) parts.push('Secure');
+  if (secure || parts.includes('SameSite=None')) parts.push('Secure');
   headers.append('Set-Cookie', parts.join('; '));
 }
 
