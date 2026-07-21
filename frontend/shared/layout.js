@@ -82,7 +82,10 @@ export async function renderLayout({ active, crumbs = [] }) {
         <div class="user-name">${escapeHtml(me.name)}</div>
         <div class="user-role">${isStudio ? 'estúdio' : 'cliente'}</div>
       </div>
-      <button class="logout" id="logout" title="Sair">${ICON.logout}</button>
+      <button class="logout" id="logout" title="Sair">
+        ${ICON.logout}
+        <span>Sair</span>
+      </button>
     </div>
   `;
 
