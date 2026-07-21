@@ -101,16 +101,32 @@ export async function mountMultiBoard(mountEl) {
       header.querySelector('h1').textContent = proj.name;
       header.querySelector('.lede').textContent =
         `${proj.client_name} · ${cards.filter(c => c.project_id === proj.id).length} cartões`;
+      const isClosed = proj.status !== 'active';
       meta.innerHTML = `
         <span class="meta-pill"><span class="meta-label">€/hora</span><span class="meta-value">${proj.hourly_rate != null ? Number(proj.hourly_rate).toFixed(0) + ' €' : '—'}</span></span>
         <span class="meta-pill"><span class="meta-label">orçamento</span><span class="meta-value">${proj.budget_hours != null ? proj.budget_hours + ' h' : '—'}</span></span>
         <a class="btn sm ghost" href="/admin/projeto.html?id=${encodeURIComponent(proj.id)}">Abrir projeto ›</a>
+        ${!isClosed
+          ? `<button class="btn sm ghost" id="closeProject" style="color:var(--stamp)">Fechar projeto</button>`
+          : `<span class="status-pill ${isClosed ? 'suspended' : 'online'}">${proj.status === 'completed' ? 'concluído' : proj.status}</span>`}
       `;
+      const closeBtn = meta.querySelector('#closeProject');
+      if (closeBtn) closeBtn.addEventListener('click', () => closeProjectNow(proj));
     } else {
       header.querySelector('h1').textContent = 'Todos os projetos';
       header.querySelector('.lede').textContent =
         `${projects.length} projetos · ${cards.length} cartões`;
       meta.innerHTML = '';
+    }
+  }
+
+  async function closeProjectNow(proj) {
+    if (!confirm(`Fechar o projeto "${proj.name}"? Vai sair do quadro geral. Pode reabri-lo a partir da página do projeto.`)) return;
+    try {
+      await api.updateProject(proj.id, { status: 'completed' });
+      await refreshAfterMutation();
+    } catch (e) {
+      alert('Não foi possível fechar o projeto: ' + e.message);
     }
   }
 
@@ -163,11 +179,11 @@ export async function mountMultiBoard(mountEl) {
     }
     boardHost.appendChild(board);
 
-    // drag-drop: only in focused mode
-    if (focused && window.Sortable) {
+    // drag-drop — works in both "Todos" and focused mode
+    if (window.Sortable) {
       for (const list of board.querySelectorAll('.kcol-cards')) {
         window.Sortable.create(list, {
-          group: 'multiboard-' + focused,
+          group: 'kanban',
           animation: 150,
           ghostClass: 'kcard-ghost',
           chosenClass: 'kcard-chosen',
@@ -175,17 +191,37 @@ export async function mountMultiBoard(mountEl) {
           forceFallback: true,
           onEnd: async (ev) => {
             const cardId = ev.item.dataset.cardId;
-            const newBucket = ev.to.dataset.bucket;
-            const realCol = STATUS_BUCKETS.includes(newBucket)
-              ? (projectColumns.find(c => c.name === newBucket)?.id)
-              : null;
-            if (!realCol) { console.error('no real column for', newBucket); renderBoard(); return; }
-            const ids = Array.from(ev.to.querySelectorAll('.kcard')).map(el => el.dataset.cardId);
-            const newPos = ids.indexOf(cardId);
+            const newBucketName = ev.to.dataset.bucket;
+            // find the card's own project, then the column in that project matching
+            // the destination bucket. In focused mode the card's project IS the
+            // focused one, so the lookup is the same; in "Todos" mode the card
+            // stays in its own project — we never let it cross projects.
+            const card = cards.find(c => c.id === cardId);
+            if (!card) { renderBoard(); return; }
+            const cardProjectColumns = columns.filter(c => c.project_id === card.project_id);
+            const realCol = cardProjectColumns.find(c => c.name === newBucketName);
+            if (!realCol) {
+              alert(`Este projeto não tem uma coluna "${newBucketName}". Crie-a primeiro.`);
+              renderBoard();
+              return;
+            }
+            // compute the new position relative to the card's own project (in
+            // "Todos" mode the destination list shows cards from many projects,
+            // so we filter to just the card's siblings).
+            const siblings = Array.from(ev.to.querySelectorAll('.kcard'))
+              .map(el => el.dataset.cardId)
+              .map(id => cards.find(c => c.id === id))
+              .filter(c => c && c.project_id === card.project_id);
+            const newPos = siblings.indexOf(card);
             try {
-              await api.moveCard(cardId, realCol, (newPos + 1) * 1024);
+              const result = await api.moveCard(cardId, realCol.id, (newPos + 1) * 1024);
+              if (result && result.project_completed) {
+                showToast('Projeto concluído — caiu do quadro geral.');
+              }
             } catch (e) {
-              console.error('move failed', e);
+              alert('Não foi possível mover o cartão: ' + e.message);
+              renderBoard();
+              return;
             }
             refreshCounts(board);
           },
@@ -225,9 +261,35 @@ export async function mountMultiBoard(mountEl) {
     projects.length = 0; projects.push(...fresh.projects);
     columns.length = 0; columns.push(...fresh.columns);
     cards.length = 0;   cards.push(...fresh.cards);
+    // if the focused project was auto-completed, it disappeared from /api/board
+    // (only active projects show). Drop focus to "Todos" so the user isn't
+    // staring at a stale focused state.
+    if (focused && !projects.find(p => p.id === focused)) {
+      focused = null;
+      for (const c of chips.querySelectorAll('.board-filter-chip')) c.classList.remove('is-active');
+      const allChip = chips.querySelector('.board-filter-chip[data-project="all"]');
+      if (allChip) allChip.classList.add('is-active');
+      // rebuild the chip list (a completed project no longer needs a chip)
+      rebuildChips();
+    }
     renderBoard();
     updateHeader();
     // refresh chip counts
+    refreshChipCounts();
+  }
+
+  function rebuildChips() {
+    // keep the "Todos" chip, drop any project chip that no longer has cards
+    const allChip = chips.querySelector('.board-filter-chip[data-project="all"]');
+    chips.innerHTML = '';
+    chips.appendChild(allChip);
+    for (const p of projects) {
+      const count = cards.filter(c => c.project_id === p.id).length;
+      chips.appendChild(chipEl(p.id, p.name, count, projectColor.get(p.id), p.name));
+    }
+  }
+
+  function refreshChipCounts() {
     for (const c of chips.querySelectorAll('.board-filter-chip')) {
       const pid = c.dataset.project;
       const n = pid === 'all' ? cards.length : cards.filter(x => x.project_id === pid).length;
@@ -246,6 +308,18 @@ export async function mountMultiBoard(mountEl) {
 
   // first render
   renderBoard();
+}
+
+function showToast(msg) {
+  const el = document.createElement('div');
+  el.className = 'toast';
+  el.textContent = msg;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => el.classList.add('on'));
+  setTimeout(() => {
+    el.classList.remove('on');
+    setTimeout(() => el.remove(), 300);
+  }, 3200);
 }
 
 function renderCard(card, projects, projectColor, focused) {

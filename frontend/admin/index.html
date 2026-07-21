@@ -13,29 +13,64 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { renderLayout, timeAgo } from '/shared/layout.js';
     import { api } from '/shared/api.js';
+
+    const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
+    const PRIORITY_COLOR = {
+      low:    { bg: 'rgba(35,33,28,.08)',  fg: 'var(--graphite-60)' },
+      medium: { bg: 'rgba(44,73,199,.12)',  fg: 'var(--cobalt)' },
+      high:   { bg: 'rgba(179,35,46,.12)',  fg: 'var(--stamp)' },
+    };
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     const { me, content } = await renderLayout({ active: 'overview', crumbs: ['Visão geral'] });
 
-    // stats
-    const [c, p, iv] = await Promise.all([
+    // Pull everything we need in parallel
+    const [c, p, b] = await Promise.all([
       api.clients().catch(() => ({ clients: [] })),
       api.projects().catch(() => ({ projects: [] })),
-      api.team().catch(() => ({ invitations: [] })),
+      api.boardAll().catch(() => ({ projects: [], columns: [], cards: [] })),
     ]);
     const clients = c.clients || [];
     const projects = p.projects || [];
-    const invitations = (iv.invitations || []).filter(i => !i.accepted_at && new Date(i.expires_at) > new Date());
-    const pendingClients = clients.filter(c => c.status === 'pending').length;
+    const allCards = b.cards || [];
+
     const activeProjects = projects.filter(p => p.status === 'active').length;
+    const pendingClients = clients.filter(c => c.status === 'pending').length;
+
+    // Build the "Próximas tarefas" list:
+    //   - cards from ACTIVE projects (we already filter on the worker)
+    //   - sorted by due_date ASC, then priority DESC (high first)
+    //   - limit 10
+    const PRIO = { high: 3, medium: 2, low: 1 };
+    const upcoming = allCards
+      .filter(card => card.due_date)
+      .sort((a, b) => {
+        const da = new Date(a.due_date).getTime();
+        const db = new Date(b.due_date).getTime();
+        if (da !== db) return da - db;
+        return (PRIO[b.priority] || 0) - (PRIO[a.priority] || 0);
+      })
+      .slice(0, 10);
+
+    function urgencyClass(due) {
+      const now = new Date(); now.setHours(0, 0, 0, 0);
+      const d = new Date(due); d.setHours(0, 0, 0, 0);
+      const days = Math.round((d - now) / 86400000);
+      if (days < 0) return ['upcoming-overdue', `atrasado há ${Math.abs(days)} d`];
+      if (days === 0) return ['upcoming-overdue', 'vence hoje'];
+      if (days === 1) return ['upcoming-overdue', 'vence amanhã'];
+      if (days <= 7) return ['upcoming-soon', `vence em ${days} d`];
+      return ['upcoming-future', `em ${days} d`];
+    }
 
     content.innerHTML = `
       <div class="page-head">
         <div>
           <span class="eyebrow">Visão geral</span>
-          <h1>Olá, ${me.name.split(' ')[0]}</h1>
-          <p class="lede">Aqui está um resumo do que está a acontecer no estúdio.</p>
+          <h1>Olá, ${escapeHtml(me.name.split(' ')[0])}</h1>
+          <p class="lede">O que está a acontecer agora no estúdio.</p>
         </div>
         <div class="actions">
           <a class="btn ghost" href="/admin/board.html">Quadro geral</a>
@@ -55,45 +90,46 @@
           <div class="value">${activeProjects}</div>
           <div class="delta">${projects.length} no total</div>
         </a>
-        <a class="stat" href="/admin/convites.html" style="text-decoration:none;color:inherit">
-          <div class="label">Convites pendentes</div>
-          <div class="value">${invitations.length}</div>
-          <div class="delta">${invitations.length ? 'expiram em 7 dias' : 'tudo enviado'}</div>
+        <a class="stat" href="/admin/board.html" style="text-decoration:none;color:inherit">
+          <div class="label">Cartões no quadro</div>
+          <div class="value">${allCards.length}</div>
+          <div class="delta">${allCards.filter(c => c.due_date).length} com prazo</div>
         </a>
       </div>
 
-      <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start">
-        <div>
-          <h2 style="margin-bottom:.7rem">Projetos recentes</h2>
-          ${projects.length === 0
-            ? '<div class="empty">Sem projetos. <a href="/admin/projetos.html">Crie o primeiro</a>.</div>'
-            : `<table class="table"><thead><tr><th>Nome</th><th>Cliente</th><th>Atualizado</th></tr></thead>
-              <tbody>${projects.slice(0, 6).map(p => `
+      <h2 style="margin:1.6rem 0 .7rem">Próximas tarefas</h2>
+      ${upcoming.length === 0
+        ? '<div class="upcoming-empty">Sem cartões com prazo. Defina datas de entrega nos cartões para os ver aqui.</div>'
+        : `<table class="table upcoming-table">
+            <thead><tr><th>Prioridade</th><th>Cartão</th><th>Projeto</th><th>Prazo</th></tr></thead>
+            <tbody>${upcoming.map(card => {
+              const proj = (b.projects || []).find(p => p.id === card.project_id);
+              const [cls, label] = urgencyClass(card.due_date);
+              const p_color = PRIORITY_COLOR[card.priority] || PRIORITY_COLOR.medium;
+              return `
                 <tr>
-                  <td class="name">${escapeHtml(p.name)}<small>${escapeHtml(p.description || '—')}</small></td>
-                  <td>${escapeHtml(p.client_name)}</td>
-                  <td><span class="mono" style="color:var(--graphite-60)">${timeAgo(p.updated_at)}</span></td>
-                </tr>
-              `).join('')}</tbody></table>`}
-        </div>
+                  <td><span class="cd-pill" style="background:${p_color.bg};color:${p_color.fg}">${PRIORITY_LABEL[card.priority] || card.priority}</span></td>
+                  <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}" style="color:inherit;text-decoration:none">${escapeHtml(card.title)}</a></td>
+                  <td>${escapeHtml(proj ? proj.name : '—')}</td>
+                  <td><span class="${cls}" style="font-family:var(--mono);font-size:.78rem">${label}</span></td>
+                </tr>`;
+            }).join('')}</tbody>
+          </table>`}
 
-        <div>
-          <h2 style="margin-bottom:.7rem">Clientes pendentes</h2>
-          ${pendingClients === 0
-            ? '<div class="empty">Nenhum cliente a aguardar ativação.</div>'
-            : `<table class="table"><thead><tr><th>Nome</th><th>Email</th><th></th></tr></thead>
-              <tbody>${clients.filter(c => c.status === 'pending').map(c => `
-                <tr>
-                  <td class="name">${escapeHtml(c.name)}</td>
-                  <td><span class="mono" style="font-size:.8rem">${escapeHtml(c.email)}</span></td>
-                  <td class="actions"><a class="btn sm ghost" href="/admin/clientes.html">Reenviar convite →</a></td>
-                </tr>
-              `).join('')}</tbody></table>`}
-        </div>
-      </div>
+      <h2 style="margin:1.6rem 0 .7rem">Projetos recentes</h2>
+      ${projects.length === 0
+        ? '<div class="empty">Sem projetos. <a href="/admin/projetos.html">Crie o primeiro</a>.</div>'
+        : `<table class="table"><thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th></tr></thead>
+          <tbody>${projects.slice(0, 6).map(p => `
+            <tr>
+              <td class="name"><a href="/admin/projeto.html?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
+              <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
+              <td>${p.hourly_rate != null ? `<span class="mono" style="font-size:.78rem">${Number(p.hourly_rate).toFixed(0)} €/h</span>` : '<span class="mono" style="color:var(--graphite-60);font-size:.78rem">—</span>'}</td>
+              <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
+              <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+            </tr>
+          `).join('')}</tbody></table>`}
     `;
-
-    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
   </script>
 </body>
 </html>

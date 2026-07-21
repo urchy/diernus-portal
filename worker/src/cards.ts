@@ -29,10 +29,12 @@ async function assertProjectAccess(c: { get: (k: string) => unknown; env: Env },
 // The frontend groups columns by name to render a unified 3-column board,
 // and filters by project when the admin focuses on a single client.
 cardRoutes.get('/board', requireRole('studio'), async (c) => {
+  // Only active projects show on the multi-board. completed/archived projects
+  // drop off automatically (auto-complete kicks in when all cards close).
   const projects = await c.env.DB
     .prepare(`SELECT p.*, c.name AS client_name, c.email AS client_email
               FROM projects p JOIN users c ON c.id = p.client_id
-              WHERE p.status != 'archived'
+              WHERE p.status = 'active'
               ORDER BY p.updated_at DESC`)
     .all<any>();
   const projectIds = projects.results.map((p: any) => p.id);
@@ -189,6 +191,18 @@ cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
   const body = await c.req.json().catch(() => null) as { column_id?: string; position?: number } | null;
   if (!body?.column_id) return c.json({ error: 'column_id obrigatório' }, 400);
 
+  // cross-project move protection: a card can only move to a column that
+  // belongs to the same project. Otherwise you'd accidentally drop a
+  // client's card into another client's project on the unified board.
+  const targetCol = await c.env.DB
+    .prepare('SELECT id, project_id, name FROM columns WHERE id = ?')
+    .bind(body.column_id)
+    .first<{ id: string; project_id: string; name: string }>();
+  if (!targetCol) return c.json({ error: 'coluna de destino não existe' }, 404);
+  if (targetCol.project_id !== existing.project_id) {
+    return c.json({ error: 'o cartão não pode mudar de projeto' }, 400);
+  }
+
   let pos = body.position;
   if (pos == null) {
     const max = await c.env.DB
@@ -202,7 +216,35 @@ cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
     .prepare('UPDATE cards SET column_id = ?, position = ?, updated_at = datetime(\'now\') WHERE id = ?')
     .bind(body.column_id, pos, c.req.param('id'))
     .run();
-  return c.json({ ok: true });
+
+  // Auto-complete: if this card just landed in a "Concluído" column and every
+  // other card in the project is also in a "Concluído" column, mark the
+  // project as completed so it falls off the multi-project board.
+  let project_completed = false;
+  if (targetCol.name.toLowerCase() === 'concluído' || targetCol.name.toLowerCase() === 'concluido') {
+    const remaining = await c.env.DB
+      .prepare(`SELECT COUNT(*) AS n
+                FROM cards c JOIN columns k ON k.id = c.column_id
+                WHERE c.project_id = ?
+                  AND (LOWER(k.name) NOT IN ('concluído', 'concluido'))`)
+      .bind(existing.project_id)
+      .first<{ n: number }>();
+    if (remaining && remaining.n === 0) {
+      const proj = await c.env.DB
+        .prepare('SELECT status FROM projects WHERE id = ?')
+        .bind(existing.project_id)
+        .first<{ status: string }>();
+      if (proj && proj.status === 'active') {
+        await c.env.DB
+          .prepare(`UPDATE projects SET status = 'completed', updated_at = datetime('now') WHERE id = ?`)
+          .bind(existing.project_id)
+          .run();
+        project_completed = true;
+      }
+    }
+  }
+
+  return c.json({ ok: true, project_completed });
 });
 
 // DELETE /api/cards/:id (studio only)

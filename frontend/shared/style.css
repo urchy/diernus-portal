@@ -500,3 +500,26 @@ h2 {
   white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis;
 }
 .kcard-project[title] { cursor: help; }
+
+/* ==========================================================================
+   TOAST — quick bottom-right notice
+   ========================================================================== */
+.toast {
+  position: fixed; bottom: 1.5rem; right: 1.5rem;
+  background: var(--graphite); color: var(--bone);
+  font-family: var(--body); font-size: .9rem;
+  padding: .75rem 1.1rem; border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.25);
+  z-index: 100; max-width: 360px;
+  opacity: 0; transform: translateY(8px);
+  transition: opacity .2s, transform .2s;
+}
+.toast.on { opacity: 1; transform: none; }
+
+/* ==========================================================================
+   UPCOMING TASKS — admin overview
+   ========================================================================== */
+.upcoming-table .upcoming-overdue { color: var(--stamp); font-weight: 500; }
+.upcoming-table .upcoming-soon    { color: var(--amber); }
+.upcoming-table .upcoming-future  { color: var(--graphite-60); }
+.upcoming-table .upcoming-empty   { padding: 1.4rem; text-align: center; color: var(--graphite-60); font-style: italic; }
