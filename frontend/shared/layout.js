@@ -100,34 +100,47 @@ export async function renderLayout({ active, crumbs = [] }) {
     <span class="user-chip">${escapeHtml(me.name)}</span>
   `;
 
-  // wrap the existing body
+  // wrap the existing body without destroying the script element
+  // (innerHTML='' would remove the running <script> tag and break the rest of the page)
   const oldContent = document.getElementById('app');
   const content = oldContent || document.createElement('main');
   content.className = 'content';
-  if (!oldContent) {
-    const main = document.createElement('div');
-    main.className = 'main';
-    main.appendChild(topbar);
-    main.appendChild(content);
-    document.body.innerHTML = '';
-    document.body.appendChild(sidebar);
-    document.body.appendChild(main);
-  } else {
-    const main = document.createElement('div');
-    main.className = 'main';
-    main.appendChild(topbar);
-    main.appendChild(content);
-    document.body.innerHTML = '';
-    document.body.classList.add('shell');
-    document.body.appendChild(sidebar);
-    document.body.appendChild(main);
+
+  // Remove any siblings of the script tag that came after the original <main id="app">.
+  // Walk the body and keep only: <script> tags, our new sidebar, and our new main wrapper.
+  const keep = new Set();
+  keep.add(sidebar);
+  // find the <main id="app"> and prepare to wrap it
+  const main = document.createElement('div');
+  main.className = 'main';
+  main.appendChild(topbar);
+  main.appendChild(content);
+  keep.add(main);
+
+  // remove every direct child of body that isn't a <script>, a modal, or something we want to keep
+  const toRemove = [];
+  for (const child of Array.from(document.body.children)) {
+    if (child.tagName === 'SCRIPT') continue;
+    if (child.classList && child.classList.contains('modal-back')) continue;  // keep modals in the body
+    if (keep.has(child)) continue;
+    toRemove.push(child);
   }
+  toRemove.forEach(el => el.remove());
+
+  document.body.classList.add('shell');
+  // insert sidebar at the start of body, main after it
+  document.body.insertBefore(sidebar, document.body.firstChild);
+  // if main isn't already in body, append it
+  if (!main.parentNode) document.body.appendChild(main);
 
   // wire logout
-  document.getElementById('logout').addEventListener('click', async () => {
-    await api.logout();
-    location.replace('/login.html');
-  });
+  const logoutBtn = document.getElementById('logout');
+  if (logoutBtn) {
+    logoutBtn.addEventListener('click', async () => {
+      await api.logout();
+      location.replace('/login.html');
+    });
+  }
 
   return { me, content };
 }
