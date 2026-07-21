@@ -18,6 +18,8 @@ export interface Project {
   name: string;
   description: string | null;
   status: 'active' | 'completed' | 'archived';
+  hourly_rate: number | null;
+  budget_hours: number | null;
   created_by: string;
   created_at: string;
   updated_at: string;
@@ -30,6 +32,8 @@ export interface KanbanColumn {
   position: number;
 }
 
+export type CardPriority = 'low' | 'medium' | 'high';
+
 export interface Card {
   id: string;
   project_id: string;
@@ -37,7 +41,11 @@ export interface Card {
   title: string;
   description: string | null;
   position: number;
+  priority: CardPriority;
   due_date: string | null;
+  estimated_hours: number | null;
+  actual_hours: number;
+  assignee_id: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

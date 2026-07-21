@@ -6,6 +6,7 @@ import { api } from './api.js';
 const ICON = {
   overview: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg>',
   projects: '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="3" width="12" height="10" rx="1"/><line x1="2" y1="6" x2="14" y2="6"/></svg>',
+  board:    '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="3" height="12" rx=".5"/><rect x="6.5" y="2" width="3" height="8" rx=".5"/><rect x="11" y="2" width="3" height="5" rx=".5"/></svg>',
   clients:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/></svg>',
   team:     '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><path d="M2 14c0-2 1.6-3.5 4-3.5M14 14c0-2-1.6-3.5-4-3.5"/></svg>',
   invites:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M2 4l6 5 6-5"/></svg>',
@@ -16,6 +17,7 @@ const NAV = {
   studio: [
     { group: 'GERAL',    items: [
       { key: 'overview', label: 'Visão geral', href: '/admin/' },
+      { key: 'board',    label: 'Quadro geral', href: '/admin/board.html' },
     ]},
     { group: 'GESTÃO',   items: [
       { key: 'projects',  label: 'Projetos',    href: '/admin/projetos.html' },
@@ -191,6 +193,6 @@ export function initials(name) {
   if (!name) return '?';
   return name.trim().split(/\s+/).slice(0, 2).map(p => p.charAt(0).toUpperCase()).join('');
 }
-function escapeHtml(s) {
+export function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

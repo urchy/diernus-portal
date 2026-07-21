@@ -58,6 +58,32 @@ projectRoutes.get('/:id', async (c) => {
   return c.json({ project: proj, columns: cols.results });
 });
 
+// PATCH /api/projects/:id — update (studio only). Status, name, description, hourly_rate, budget_hours.
+projectRoutes.patch('/:id', requireRole('studio'), async (c) => {
+  const existing = await c.env.DB
+    .prepare('SELECT id FROM projects WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<{ id: string }>();
+  if (!existing) return c.json({ error: 'projeto não encontrado' }, 404);
+  const body = await c.req.json().catch(() => null) as Partial<Project> | null;
+  if (!body) return c.json({ error: 'payload vazio' }, 400);
+  const allowed: (keyof Project)[] = ['name', 'description', 'status', 'hourly_rate', 'budget_hours'];
+  const sets: string[] = [];
+  const args: any[] = [];
+  for (const k of allowed) {
+    if ((body as any)[k] !== undefined) {
+      sets.push(`${k} = ?`);
+      args.push((body as any)[k] === '' ? null : (body as any)[k]);
+    }
+  }
+  if (sets.length === 0) return c.json({ error: 'nada para atualizar' }, 400);
+  sets.push('updated_at = datetime(\'now\')');
+  args.push(c.req.param('id'));
+  await c.env.DB.prepare(`UPDATE projects SET ${sets.join(', ')} WHERE id = ?`).bind(...args).run();
+  const project = await c.env.DB.prepare('SELECT * FROM projects WHERE id = ?').bind(c.req.param('id')).first<Project>();
+  return c.json({ project });
+});
+
 // POST /api/projects — create (studio only)
 projectRoutes.post('/', requireRole('studio'), async (c) => {
   const me = c.get('user') as User;

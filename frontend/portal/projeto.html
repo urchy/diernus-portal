@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Projeto · Diernus Admin</title>
+  <title>Projeto · Diernus Portal</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,18 +14,16 @@
   <main id="app"></main>
   <script type="module">
     import { renderLayout } from '/shared/layout.js';
-    import { api } from '/shared/api.js';
     import { mountBoard } from '/shared/board.js';
-    const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Projetos', 'Detalhe'] });
+    const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Os meus projetos', 'Detalhe'] });
     const id = new URLSearchParams(location.search).get('id');
     if (!id) { content.innerHTML = '<div class="error">ID em falta.</div>'; }
     else {
-      // a back-link at the top of the page (since the sidebar nav doesn't carry the id)
       const back = document.createElement('div');
       back.style.marginBottom = '1rem';
-      back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/admin/projetos.html">‹ PROJETOS</a>';
+      back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/portal/">‹ OS MEUS PROJETOS</a>';
       content.appendChild(back);
-      await mountBoard(content, id, 'studio');
+      await mountBoard(content, id, 'client');
     }
   </script>
 </body>

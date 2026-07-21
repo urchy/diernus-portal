@@ -46,6 +46,8 @@ CREATE TABLE IF NOT EXISTS projects (
   name            TEXT NOT NULL,
   description     TEXT,
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived')),
+  hourly_rate     REAL,                                        -- €/hour agreed with the client
+  budget_hours    REAL,                                        -- optional total hours budget
   created_by      TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -77,16 +79,22 @@ CREATE TABLE IF NOT EXISTS cards (
   title           TEXT NOT NULL,
   description     TEXT,
   position        INTEGER NOT NULL,
+  priority        TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   due_date        TEXT,
+  estimated_hours REAL,                                        -- how many hours the studio estimates for this card
+  actual_hours    REAL NOT NULL DEFAULT 0,                     -- how many hours were actually spent (incremented by the studio)
+  assignee_id     TEXT,                                        -- studio member assigned to this card (optional)
   created_by      TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
-  FOREIGN KEY (column_id)  REFERENCES columns(id)  ON DELETE CASCADE,
-  FOREIGN KEY (created_by) REFERENCES users(id)    ON DELETE RESTRICT
+  FOREIGN KEY (project_id)  REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (column_id)   REFERENCES columns(id)  ON DELETE CASCADE,
+  FOREIGN KEY (assignee_id) REFERENCES users(id)    ON DELETE SET NULL,
+  FOREIGN KEY (created_by)  REFERENCES users(id)    ON DELETE RESTRICT
 );
-CREATE INDEX IF NOT EXISTS idx_cards_project ON cards(project_id);
-CREATE INDEX IF NOT EXISTS idx_cards_column  ON cards(column_id, position);
+CREATE INDEX IF NOT EXISTS idx_cards_project  ON cards(project_id);
+CREATE INDEX IF NOT EXISTS idx_cards_column   ON cards(column_id, position);
+CREATE INDEX IF NOT EXISTS idx_cards_assignee ON cards(assignee_id);
 
 -- =========================================================================
 -- comments — on cards (studio + client both can post)

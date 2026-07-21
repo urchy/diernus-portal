@@ -52,4 +52,23 @@ export const api = {
   project:  (id) => request('/api/projects/' + encodeURIComponent(id)),
   createProject: (client_id, name, description) =>
     request('/api/projects', { method: 'POST', body: { client_id, name, description } }),
+  updateProject: (id, patch) =>
+    request('/api/projects/' + encodeURIComponent(id), { method: 'PATCH', body: patch }),
+
+  // Board
+  board: (projectId) => request('/api/projects/' + encodeURIComponent(projectId) + '/board'),
+  boardAll: () => request('/api/board'),
+  createCard: (projectId, body) =>
+    request('/api/projects/' + encodeURIComponent(projectId) + '/cards', { method: 'POST', body }),
+  updateCard: (id, patch) =>
+    request('/api/cards/' + encodeURIComponent(id), { method: 'PATCH', body: patch }),
+  moveCard:   (id, column_id, position) =>
+    request('/api/cards/' + encodeURIComponent(id) + '/move', { method: 'POST', body: { column_id, position } }),
+  deleteCard: (id) => request('/api/cards/' + encodeURIComponent(id), { method: 'DELETE' }),
+  card:       (id) => request('/api/cards/' + encodeURIComponent(id)),
+
+  // Comments
+  comments: (cardId) => request('/api/cards/' + encodeURIComponent(cardId) + '/comments'),
+  addComment: (cardId, body) =>
+    request('/api/cards/' + encodeURIComponent(cardId) + '/comments', { method: 'POST', body: { body } }),
 };

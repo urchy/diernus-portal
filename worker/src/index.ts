@@ -7,6 +7,8 @@ import type { AppVariables, Env } from './types.js';
 import { authRoutes } from './auth.js';
 import { projectRoutes, clientRoutes } from './projects.js';
 import { inviteRoutes } from './invites.js';
+import { cardRoutes } from './cards.js';
+import { commentRoutes } from './comments.js';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -36,6 +38,8 @@ app.route('/api/auth', authRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/invites', inviteRoutes);
 app.route('/api/clients', clientRoutes);
+app.route('/api', cardRoutes);       // /api/projects/:id/board, /api/cards/:id, etc.
+app.route('/api', commentRoutes);    // /api/cards/:cardId/comments
 
 app.notFound((c) => c.json({ error: 'not found', path: c.req.path }, 404));
 app.onError((err, c) => {
