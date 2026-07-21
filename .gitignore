@@ -1,0 +1,21 @@
+# Node
+node_modules/
+npm-debug.log*
+.pnpm-debug.log*
+
+# Build
+dist/
+.wrangler/
+.dev.vars
+
+# Editor / OS
+.DS_Store
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Local secrets (use wrangler secret put for these instead)
+.env
+.env.local

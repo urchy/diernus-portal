@@ -1,0 +1,31 @@
+name = "diernus-portal-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-18"
+compatibility_flags = ["nodejs_compat"]
+
+# D1 — Diernus Portal database
+[[d1_databases]]
+binding = "DB"
+database_name = "diernus-portal-db"
+database_id = "60ce41ed-54f6-40e4-a4d4-66efc321e005"
+
+# R2 — file storage
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "diernus-portal-files"
+
+# KV — session cache
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "359aa1e3bf0f44a0a74100646d0a49a0"
+
+# Vars (non-secret) — set per env if needed
+[vars]
+ENVIRONMENT = "production"
+MAX_UPLOAD_MB = "50"
+
+# Secrets (set with `wrangler secret put <NAME>`):
+#   JWT_SECRET   — random 32+ char string
+#   RESEND_KEY   — Resend API key
+#   EMAIL_FROM   — "Diernus <ola@diernus.com>"
+#   PUBLIC_URL   — https://portal.diernus.com

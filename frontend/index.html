@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Diernus · Portal</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <script type="module">
+    import { api } from '/shared/api.js';
+    // Decide where to go: if logged in, portal or admin; else login
+    try {
+      const { user } = await api.me();
+      location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+    } catch {
+      location.replace('/login.html');
+    }
+  </script>
+</head>
+<body>
+  <p style="text-align:center;margin-top:30vh;color:var(--graphite-60);font-style:italic">A redirecionar…</p>
+</body>
+</html>

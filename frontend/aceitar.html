@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Aceitar convite · Diernus</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main class="shell">
+    <p class="eyebrow">Diernus · Portal</p>
+    <h1 id="title">A ativar o convite…</h1>
+    <p class="lede" id="lede"></p>
+
+    <div id="err" class="error" style="display:none"></div>
+
+    <form id="form" style="display:none" novalidate>
+      <label class="field">
+        <label>Nome</label>
+        <input type="text" name="name" id="name" required>
+      </label>
+      <label class="field">
+        <label>Palavra-passe</label>
+        <input type="password" name="password" required minlength="8" autocomplete="new-password">
+      </label>
+      <label class="field">
+        <label>Confirmar palavra-passe</label>
+        <input type="password" name="password2" required minlength="8" autocomplete="new-password">
+      </label>
+      <button class="btn primary" type="submit" id="submit">Ativar conta</button>
+    </form>
+  </main>
+
+  <script type="module">
+    import { api } from '/shared/api.js';
+    const params = new URLSearchParams(location.search);
+    const token = params.get('token');
+    const err = document.getElementById('err');
+    const form = document.getElementById('form');
+    const title = document.getElementById('title');
+    const lede = document.getElementById('lede');
+    const submit = document.getElementById('submit');
+
+    if (!token) {
+      title.textContent = 'Convite em falta';
+      err.textContent = 'O link de convite não tem token. Verifique o URL recebido por email.';
+      err.style.display = '';
+    } else {
+      try {
+        const { invitation } = await api.base && await fetch(api.base + '/api/auth/invite/' + encodeURIComponent(token), { credentials: 'include' }).then(r => r.json());
+        if (!invitation) throw new Error('convite não encontrado');
+        title.textContent = `Bem-vindo, ${invitation.name}`;
+        lede.textContent = invitation.role === 'client'
+          ? 'Foi convidado(a) para acompanhar o seu projeto. Defina a sua palavra-passe para começar.'
+          : 'Foi convidado(a) para juntar-se à equipa Diernus no portal interno. Defina a sua palavra-passe para começar.';
+        document.getElementById('name').value = invitation.name;
+        form.style.display = '';
+      } catch (e) {
+        title.textContent = 'Convite inválido';
+        err.textContent = e.message;
+        err.style.display = '';
+      }
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.style.display = 'none';
+      const data = new FormData(form);
+      const name = (data.get('name') || '').toString().trim();
+      const pwd  = (data.get('password') || '').toString();
+      const pwd2 = (data.get('password2') || '').toString();
+      if (pwd.length < 8) { err.textContent = 'A palavra-passe tem de ter pelo menos 8 caracteres.'; err.style.display = ''; return; }
+      if (pwd !== pwd2) { err.textContent = 'As palavras-passe não coincidem.'; err.style.display = ''; return; }
+      submit.disabled = true; submit.textContent = 'A ativar…';
+      try {
+        const { user } = await api.base && await fetch(api.base + '/api/auth/accept-invite', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, password: pwd, name }),
+        }).then(r => r.json());
+        if (!user || !user.role) throw new Error('não foi possível ativar a conta');
+        location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+      } catch (e) {
+        err.textContent = e.message;
+        err.style.display = '';
+        submit.disabled = false; submit.textContent = 'Ativar conta';
+      }
+    });
+  </script>
+</body>
+</html>

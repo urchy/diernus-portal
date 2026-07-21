@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Iniciar sessão · Diernus</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main class="shell">
+    <p class="eyebrow">Diernus · Portal</p>
+    <h1>Iniciar sessão</h1>
+    <p class="lede">Acompanhe os seus projetos, comente e descarregue ficheiros.</p>
+
+    <div id="err" class="error" style="display:none"></div>
+
+    <form id="form" novalidate>
+      <label class="field">
+        <label>Email</label>
+        <input type="email" name="email" required autocomplete="email" autofocus>
+      </label>
+      <label class="field">
+        <label>Palavra-passe</label>
+        <input type="password" name="password" required autocomplete="current-password" minlength="8">
+      </label>
+      <button class="btn primary" type="submit" id="submit">Entrar</button>
+    </form>
+  </main>
+
+  <script type="module">
+    import { api } from '/shared/api.js';
+    const form = document.getElementById('form');
+    const err  = document.getElementById('err');
+    const btn  = document.getElementById('submit');
+
+    // If already logged in, redirect
+    try {
+      const { user } = await api.me();
+      location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+    } catch {}
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      err.style.display = 'none';
+      btn.disabled = true; btn.textContent = 'A entrar…';
+      const data = new FormData(form);
+      try {
+        const { user } = await api.login(data.get('email'), data.get('password'));
+        location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+      } catch (e) {
+        err.textContent = e.message;
+        err.style.display = '';
+        btn.disabled = false; btn.textContent = 'Entrar';
+      }
+    });
+  </script>
+</body>
+</html>

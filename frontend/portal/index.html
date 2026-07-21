@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Portal · Diernus</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <nav class="bar">
+    <a class="wordmark" href="/portal/"><b>D</b> DIERNUS · PORTAL</a>
+    <span class="who" id="who"></span>
+    <button class="logout" id="logout">Sair</button>
+  </nav>
+
+  <main class="page">
+    <p class="eyebrow">Os seus projetos</p>
+    <h1>Bem-vindo, <span id="name">—</span></h1>
+    <p class="lede">Aqui pode acompanhar o progresso do seu projeto, comentar nos cartões e descarregar os ficheiros partilhados pelo estúdio.</p>
+
+    <div id="content" class="grid"></div>
+  </main>
+
+  <script type="module">
+    import { api, $, el, fmtDate } from '/shared/api.js';
+    let me;
+    try { me = (await api.me()).user; }
+    catch { location.replace('/login.html'); throw new Error('not logged in'); }
+    if (me.role !== 'client') { location.replace('/admin/'); throw new Error('not a client'); }
+
+    $('#name').textContent = me.name.split(' ')[0];
+    $('#who').innerHTML = `<span class="role">cliente</span> ${me.name}`;
+
+    $('#logout').addEventListener('click', async () => { await api.logout(); location.replace('/login.html'); });
+
+    const content = $('#content');
+    try {
+      const { projects } = await api.projects();
+      if (!projects.length) {
+        content.outerHTML = '<div class="empty">Ainda não tem projetos. O estúdio criará um em breve.</div>';
+      } else {
+        content.innerHTML = '';
+        for (const p of projects) {
+          const card = el('a', { class: 'card', href: '#' + p.id, style: 'text-decoration:none;color:inherit' },
+            el('span', { class: 'eyebrow' }, p.status === 'active' ? 'EM CURSO' : p.status === 'completed' ? 'CONCLUÍDO' : 'ARQUIVADO'),
+            el('h3', {}, p.name),
+            el('p', { class: 'meta' }, p.description || '—'),
+            el('p', { class: 'meta' }, 'Atualizado em ' + fmtDate(p.updated_at))
+          );
+          content.appendChild(card);
+        }
+      }
+    } catch (e) {
+      content.outerHTML = `<div class="error">${e.message}</div>`;
+    }
+  </script>
+</body>
+</html>
