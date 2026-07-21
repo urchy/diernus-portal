@@ -9,13 +9,15 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS users (
   id              TEXT PRIMARY KEY,
   email           TEXT UNIQUE NOT NULL,
-  password_hash   TEXT NOT NULL,
+  password_hash   TEXT,                                       -- nullable: pending clients have no password yet
   name            TEXT NOT NULL,
   role            TEXT NOT NULL CHECK (role IN ('studio', 'client')),
+  status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'suspended')),
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   last_seen_at    TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_users_role ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_role   ON users(role);
+CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 -- =========================================================================
 -- invitations — both clients and studio team members

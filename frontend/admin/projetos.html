@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Projetos · Diernus Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <div class="modal-back" id="modalBack">
+    <div class="modal">
+      <h2>+ Projeto</h2>
+      <div class="error" id="err" style="display:none"></div>
+      <form id="form">
+        <label class="field"><label>Cliente</label><select name="client_id" id="clientSel" required></select></label>
+        <label class="field"><label>Nome do projeto</label><input type="text" name="name" required></label>
+        <label class="field"><label>Descrição (opcional)</label><textarea name="description" rows="3"></textarea></label>
+        <div class="row" style="display:flex;gap:.55rem">
+          <button type="button" class="btn ghost" id="cancel" style="flex:1;justify-content:center;padding:.55rem">Cancelar</button>
+          <button type="submit" class="btn primary" id="submit" style="flex:1;justify-content:center;padding:.55rem">Criar projeto</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script type="module">
+    import { renderLayout, timeAgo } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { content } = await renderLayout({ active: 'projects', crumbs: ['Projetos'] });
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    async function render() {
+      const { projects } = await api.projects();
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Projetos</span>
+            <h1>${projects.length} ${projects.length === 1 ? 'projeto' : 'projetos'}</h1>
+            <p class="lede">Crie projetos para os seus clientes. Cada projeto traz um kanban (A Fazer / Em Curso / Concluído) onde pode adicionar cartões e onde o cliente pode comentar.</p>
+          </div>
+          <div class="actions"><button class="btn primary" id="newProject">+ Novo projeto</button></div>
+        </div>
+        ${projects.length === 0
+          ? '<div class="empty">Sem projetos. Crie um cliente primeiro em <a href="/admin/clientes.html">Clientes</a>, depois crie um projeto.</div>'
+          : `<table class="table">
+              <thead><tr><th>Nome</th><th>Cliente</th><th>Estado</th><th>Atualizado</th></tr></thead>
+              <tbody>${projects.map(p => `
+                <tr>
+                  <td class="name"><a href="/admin/projeto.html?id=${p.id}">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
+                  <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
+                  <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
+                  <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+                </tr>
+              `).join('')}</tbody>
+            </table>`}
+      `;
+      document.getElementById('newProject').addEventListener('click', openModal);
+    }
+
+    function openModal() {
+      document.getElementById('form').reset();
+      document.getElementById('err').style.display = 'none';
+      document.getElementById('modalBack').classList.add('on');
+      // load clients
+      api.clients().then(({ clients }) => {
+        const sel = document.getElementById('clientSel');
+        const active = clients.filter(c => c.status === 'active');
+        if (!active.length) {
+          sel.innerHTML = '<option value="">— sem clientes ativos —</option>';
+          document.getElementById('submit').disabled = true;
+        } else {
+          sel.innerHTML = '<option value="">— escolha um cliente —</option>' +
+            active.map(c => `<option value="${c.id}">${escapeHtml(c.name)} (${escapeHtml(c.email)})</option>`).join('');
+          document.getElementById('submit').disabled = false;
+        }
+      });
+    }
+    function closeModal() { document.getElementById('modalBack').classList.remove('on'); }
+    document.getElementById('cancel').addEventListener('click', closeModal);
+    document.getElementById('modalBack').addEventListener('click', e => { if (e.target.id === 'modalBack') closeModal(); });
+
+    document.getElementById('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = new FormData(e.target);
+      const submit = document.getElementById('submit');
+      submit.disabled = true; submit.textContent = 'A criar…';
+      try {
+        await api.createProject(data.get('client_id'), data.get('name'), data.get('description'));
+        closeModal();
+        await render();
+      } catch (err) {
+        const el = document.getElementById('err');
+        el.textContent = err.message; el.style.display = '';
+      } finally {
+        submit.disabled = false; submit.textContent = 'Criar projeto';
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

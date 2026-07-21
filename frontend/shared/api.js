@@ -1,5 +1,5 @@
 // shared/api.js — fetch wrapper for the Diernus Portal
-// Configures the API base URL and handles JSON, auth, errors.
+// Points at the deployed Worker (cross-origin Pages → Workers).
 
 const API_BASE = 'https://diernus-portal-api.silva-andre-daniel.workers.dev';
 
@@ -35,45 +35,21 @@ export const api = {
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
 
-  // Invites
-  invite: (email, name, role) => request('/api/invites', { method: 'POST', body: { email, name, role } }),
-  invites: () => request('/api/invites'),
+  // Clients (studio)
+  clients:    () => request('/api/clients'),
+  client:     (id) => request('/api/clients/' + encodeURIComponent(id)),
+  createClient: (email, name) => request('/api/clients', { method: 'POST', body: { email, name } }),
+  inviteClient: (id) => request('/api/clients/' + encodeURIComponent(id) + '/invite', { method: 'POST' }),
+  deleteClient: (id) => request('/api/clients/' + encodeURIComponent(id), { method: 'DELETE' }),
+
+  // Team (studio)
+  team:     () => request('/api/invites'),
+  inviteTeam: (email, name) => request('/api/invites', { method: 'POST', body: { email, name, role: 'studio' } }),
+  reInvite: (email, name, role) => request('/api/invites', { method: 'POST', body: { email, name, role } }),
 
   // Projects
   projects: () => request('/api/projects'),
   project:  (id) => request('/api/projects/' + encodeURIComponent(id)),
   createProject: (client_id, name, description) =>
     request('/api/projects', { method: 'POST', body: { client_id, name, description } }),
-
-  // Clients (studio)
-  clients: () => request('/api/clients'),
 };
-
-// tiny dom helper
-export function $(sel, root = document) { return root.querySelector(sel); }
-export function el(tag, attrs = {}, ...children) {
-  const e = document.createElement(tag);
-  for (const k in attrs) {
-    if (k === 'class') e.className = attrs[k];
-    else if (k === 'html') e.innerHTML = attrs[k];
-    else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-    else e.setAttribute(k, attrs[k]);
-  }
-  for (const c of children) {
-    if (c == null) continue;
-    e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
-  }
-  return e;
-}
-
-export function fmtDate(s) {
-  if (!s) return '';
-  const d = new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
-  return d.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
-}
-
-export function fmtDateTime(s) {
-  if (!s) return '';
-  const d = new Date(s.includes('T') ? s : s.replace(' ', 'T') + 'Z');
-  return d.toLocaleString('pt-PT', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
-}

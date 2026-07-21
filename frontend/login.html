@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Iniciar sessão · Diernus</title>
+  <title>Iniciar sessão · Diernus Portal</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -11,25 +11,27 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
 </head>
 <body>
-  <main class="shell">
-    <p class="eyebrow">Diernus · Portal</p>
-    <h1>Iniciar sessão</h1>
-    <p class="lede">Acompanhe os seus projetos, comente e descarregue ficheiros.</p>
+  <div class="auth-shell">
+    <div class="auth-card">
+      <span class="eyebrow">Diernus · Portal</span>
+      <h1>Iniciar sessão</h1>
+      <p class="lede">Acompanhe os seus projetos, comente nos cartões e descarregue os ficheiros partilhados.</p>
 
-    <div id="err" class="error" style="display:none"></div>
+      <div id="err" class="error" style="display:none"></div>
 
-    <form id="form" novalidate>
-      <label class="field">
-        <label>Email</label>
-        <input type="email" name="email" required autocomplete="email" autofocus>
-      </label>
-      <label class="field">
-        <label>Palavra-passe</label>
-        <input type="password" name="password" required autocomplete="current-password" minlength="8">
-      </label>
-      <button class="btn primary" type="submit" id="submit">Entrar</button>
-    </form>
-  </main>
+      <form id="form" novalidate>
+        <label class="field">
+          <label>Email</label>
+          <input type="email" name="email" required autocomplete="email" autofocus>
+        </label>
+        <label class="field">
+          <label>Palavra-passe</label>
+          <input type="password" name="password" required autocomplete="current-password" minlength="8">
+        </label>
+        <button class="btn primary" type="submit" id="submit" style="width:100%;justify-content:center;padding:.7rem">Entrar</button>
+      </form>
+    </div>
+  </div>
 
   <script type="module">
     import { api } from '/shared/api.js';
@@ -37,7 +39,6 @@
     const err  = document.getElementById('err');
     const btn  = document.getElementById('submit');
 
-    // If already logged in, redirect
     try {
       const { user } = await api.me();
       location.replace(user.role === 'studio' ? '/admin/' : '/portal/');

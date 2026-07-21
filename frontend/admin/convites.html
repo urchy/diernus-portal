@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Convites · Diernus Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { content } = await renderLayout({ active: 'invites', crumbs: ['Convites'] });
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    async function render() {
+      const { invitations } = await api.team();
+      // sort: pending first, then accepted, then expired
+      const now = new Date();
+      const sortKey = i => i.accepted_at ? 2 : new Date(i.expires_at) < now ? 3 : 1;
+      invitations.sort((a, b) => sortKey(a) - sortKey(b));
+      const pending  = invitations.filter(i => !i.accepted_at && new Date(i.expires_at) > now);
+      const accepted = invitations.filter(i =>  i.accepted_at);
+      const expired  = invitations.filter(i => !i.accepted_at && new Date(i.expires_at) <= now);
+
+      const row = i => {
+        const status = i.accepted_at ? 'aceite' : new Date(i.expires_at) < now ? 'expirado' : 'pendente';
+        return `<tr>
+          <td class="name">${escapeHtml(i.name)}<small><span class="mono">${escapeHtml(i.email)}</span></small></td>
+          <td><span class="status-pill ${i.role === 'client' ? 'pending' : 'active'}">${i.role === 'client' ? 'cliente' : 'estúdio'}</span></td>
+          <td><span class="mono" style="font-size:.78rem">${timeAgo(i.created_at)}</span></td>
+          <td><span class="mono" style="font-size:.78rem;color:var(--graphite-60)">${fmtDate(i.expires_at)}</span></td>
+          <td><span class="status-pill ${status === 'aceite' ? 'active' : status === 'pendente' ? 'pending' : 'suspended'}">${status}</span></td>
+        </tr>`;
+      };
+
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Convites</span>
+            <h1>${pending.length} pendente${pending.length === 1 ? '' : 's'}</h1>
+            <p class="lede">Todos os convites enviados pelo estúdio. Os pendentes expiram em 7 dias.</p>
+          </div>
+        </div>
+        ${invitations.length === 0
+          ? '<div class="empty">Nenhum convite enviado ainda. Crie um cliente em <a href="/admin/clientes.html">Clientes</a>.</div>'
+          : `<table class="table">
+              <thead><tr><th>Nome</th><th>Para</th><th>Enviado</th><th>Expira</th><th>Estado</th></tr></thead>
+              <tbody>
+                ${pending.map(row).join('')}
+                ${accepted.map(row).join('')}
+                ${expired.map(row).join('')}
+              </tbody>
+            </table>`}
+      `;
+    }
+
+    render();
+  </script>
+</body>
+</html>

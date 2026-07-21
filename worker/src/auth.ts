@@ -12,17 +12,18 @@ authRoutes.post('/login', async (c) => {
   if (!body?.email || !body?.password) return c.json({ error: 'email e palavra-passe obrigatórios' }, 400);
 
   const user = await c.env.DB
-    .prepare('SELECT id, email, password_hash, name, role, created_at, last_seen_at FROM users WHERE email = ?')
+    .prepare('SELECT id, email, password_hash, name, role, status, created_at, last_seen_at FROM users WHERE email = ?')
     .bind(body.email.toLowerCase().trim())
     .first<User & { password_hash: string }>();
   if (!user) return c.json({ error: 'credenciais inválidas' }, 401);
+  if (user.status !== 'active') return c.json({ error: 'conta pendente de ativação — verifique o seu email para definir a palavra-passe' }, 403);
   const ok = await verifyPassword(body.password, user.password_hash);
   if (!ok) return c.json({ error: 'credenciais inválidas' }, 401);
 
   const token = await signJwt({ sub: user.id, role: user.role }, c.env.JWT_SECRET);
   setSessionCookie(c.res.headers, token, c.env.ENVIRONMENT === 'production');
   return c.json({
-    user: { id: user.id, email: user.email, name: user.name, role: user.role, created_at: user.created_at, last_seen_at: user.last_seen_at },
+    user: { id: user.id, email: user.email, name: user.name, role: user.role, status: user.status, created_at: user.created_at, last_seen_at: user.last_seen_at },
   });
 });
 
@@ -51,6 +52,11 @@ authRoutes.get('/invite/:token', async (c) => {
 });
 
 // POST /api/auth/accept-invite — set password, consume invitation
+// Two flows:
+//   (a) the user does NOT exist yet (was created via POST /api/invites for a new person):
+//       create the user with status='active' + set password.
+//   (b) the user already exists with status='pending' (was created via POST /api/clients):
+//       set the password + flip status to 'active'.
 authRoutes.post('/accept-invite', async (c) => {
   const body = await c.req.json().catch(() => null) as { token?: string; password?: string; name?: string } | null;
   if (!body?.token || !body?.password) return c.json({ error: 'token e palavra-passe obrigatórios' }, 400);
@@ -64,19 +70,34 @@ authRoutes.post('/accept-invite', async (c) => {
   if (inv.accepted_at) return c.json({ error: 'convite já utilizado' }, 410);
   if (new Date(inv.expires_at) < new Date()) return c.json({ error: 'convite expirado' }, 410);
 
-  const id = uuid();
-  const name = (body.name || inv.name).trim();
   const hash = await hashPassword(body.password);
-  const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(inv.email).first<{ id: string }>();
-  if (existing) return c.json({ error: 'já existe uma conta com este email' }, 409);
+  const email = inv.email.toLowerCase();
+  const name = (body.name || inv.name).trim();
+  const existing = await c.env.DB
+    .prepare('SELECT id, status, password_hash FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ id: string; status: string; password_hash: string }>();
 
-  await c.env.DB.batch([
-    c.env.DB.prepare('INSERT INTO users (id, email, password_hash, name, role) VALUES (?, ?, ?, ?, ?)')
-      .bind(id, inv.email.toLowerCase(), hash, name, inv.role),
-    c.env.DB.prepare('UPDATE invitations SET accepted_at = datetime("now") WHERE id = ?').bind(inv.id),
-  ]);
+  let userId: string;
+  if (existing) {
+    if (existing.status === 'active') return c.json({ error: 'esta conta já está ativa' }, 409);
+    // Replace the unguessable placeholder with the real hash; flip status to 'active'.
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE users SET password_hash = ?, name = ?, status = 'active' WHERE id = ?")
+        .bind(hash, name, existing.id),
+      c.env.DB.prepare('UPDATE invitations SET accepted_at = datetime("now") WHERE id = ?').bind(inv.id),
+    ]);
+    userId = existing.id;
+  } else {
+    userId = uuid();
+    await c.env.DB.batch([
+      c.env.DB.prepare("INSERT INTO users (id, email, password_hash, name, role, status) VALUES (?, ?, ?, ?, ?, 'active')")
+        .bind(userId, email, hash, name, inv.role),
+      c.env.DB.prepare('UPDATE invitations SET accepted_at = datetime("now") WHERE id = ?').bind(inv.id),
+    ]);
+  }
 
-  const token = await signJwt({ sub: id, role: inv.role }, c.env.JWT_SECRET);
+  const token = await signJwt({ sub: userId, role: inv.role }, c.env.JWT_SECRET);
   setSessionCookie(c.res.headers, token, c.env.ENVIRONMENT === 'production');
-  return c.json({ user: { id, email: inv.email, name, role: inv.role } });
+  return c.json({ user: { id: userId, email, name, role: inv.role, status: 'active' } });
 });

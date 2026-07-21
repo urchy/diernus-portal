@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Equipa · Diernus Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <div class="modal-back" id="modalBack">
+    <div class="modal">
+      <h2>+ Membro da equipa</h2>
+      <div class="error" id="err" style="display:none"></div>
+      <form id="form">
+        <label class="field"><label>Nome</label><input type="text" name="name" required></label>
+        <label class="field"><label>Email</label><input type="email" name="email" required></label>
+        <div class="row" style="display:flex;gap:.55rem">
+          <button type="button" class="btn ghost" id="cancel" style="flex:1;justify-content:center;padding:.55rem">Cancelar</button>
+          <button type="submit" class="btn primary" id="submit" style="flex:1;justify-content:center;padding:.55rem">Enviar convite</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  <script type="module">
+    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { content } = await renderLayout({ active: 'team', crumbs: ['Equipa'] });
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    async function render() {
+      // we use /api/invites as a proxy for sent team invites
+      // (we also show the studio users list)
+      const [team, allUsers] = await Promise.all([
+        api.team().catch(() => ({ invitations: [] })),
+        api.me(),
+      ]);
+      // For now the team page just shows the current user + invitation history.
+      // Phase 2: add a /api/team endpoint.
+      const me = allUsers.user;
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Equipa</span>
+            <h1>Membros do estúdio</h1>
+            <p class="lede">Convide colegas para entrar no estúdio e gerir projetos consigo.</p>
+          </div>
+          <div class="actions"><button class="btn primary" id="newTeam">+ Convidar membro</button></div>
+        </div>
+
+        <h2 style="margin-bottom:.7rem">No estúdio</h2>
+        <table class="table">
+          <thead><tr><th>Nome</th><th>Email</th><th>Último acesso</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="name">${escapeHtml(me.name)} <span class="status-pill active" style="margin-left:.5rem">tu</span></td>
+              <td><span class="mono" style="font-size:.8rem">${escapeHtml(me.email)}</span></td>
+              <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${me.last_seen_at ? timeAgo(me.last_seen_at) : 'nunca'}</span></td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="lede" style="margin-top:1rem;font-size:.85rem">A lista completa de membros do estúdio será adicionada em breve. Por agora, para adicionar novos membros use "Convidar membro" — o convite é enviado por email e o utilizador aparece aqui quando aceitar.</p>
+      `;
+      document.getElementById('newTeam').addEventListener('click', openModal);
+    }
+
+    function openModal() {
+      document.getElementById('form').reset();
+      document.getElementById('err').style.display = 'none';
+      document.getElementById('modalBack').classList.add('on');
+    }
+    function closeModal() { document.getElementById('modalBack').classList.remove('on'); }
+    document.getElementById('cancel').addEventListener('click', closeModal);
+    document.getElementById('modalBack').addEventListener('click', e => { if (e.target.id === 'modalBack') closeModal(); });
+    document.getElementById('form').addEventListener('submit', async e => {
+      e.preventDefault();
+      const data = new FormData(e.target);
+      const submit = document.getElementById('submit');
+      submit.disabled = true; submit.textContent = 'A enviar…';
+      try {
+        const res = await api.inviteTeam(data.get('email'), data.get('name'));
+        if (res.warning) prompt('Email não enviado — copie este link para enviar manualmente:', res.invitation.accept_url);
+        closeModal();
+        await render();
+      } catch (err) {
+        const el = document.getElementById('err');
+        el.textContent = err.message; el.style.display = '';
+      } finally {
+        submit.disabled = false; submit.textContent = 'Enviar convite';
+      }
+    });
+
+    render();
+  </script>
+</body>
+</html>

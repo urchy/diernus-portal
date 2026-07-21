@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Cliente · Diernus Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { content } = await renderLayout({ active: 'clients', crumbs: ['Clientes', 'Detalhe'] });
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    const id = new URLSearchParams(location.search).get('id');
+    if (!id) { content.innerHTML = '<div class="error">ID em falta.</div>'; }
+    else {
+      const { client, projects, invitations } = await api.client(id);
+      const canInvite = client.status !== 'active';
+      const canDelete = client.status === 'pending' && projects.length === 0;
+
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/admin/clientes.html">‹ CLIENTES</a>
+            <h1 style="margin-top:.2rem">${escapeHtml(client.name)}</h1>
+            <p class="lede"><span class="mono">${escapeHtml(client.email)}</span> · <span class="status-pill ${client.status}">${client.status === 'active' ? 'ativo' : client.status === 'pending' ? 'pendente' : client.status}</span></p>
+          </div>
+          <div class="actions">
+            ${canInvite ? '<button class="btn primary" id="invite">Enviar/Reenviar convite</button>' : ''}
+            ${canDelete ? '<button class="btn danger" id="del">Apagar cliente</button>' : ''}
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:2fr 1fr;gap:1rem;align-items:start">
+          <div>
+            <h2 style="margin-bottom:.7rem">Projetos (${projects.length})</h2>
+            ${projects.length === 0
+              ? '<div class="empty">Sem projetos. Crie um na página <a href="/admin/projetos.html">Projetos</a>.</div>'
+              : `<table class="table">
+                  <thead><tr><th>Nome</th><th>Estado</th><th>Atualizado</th></tr></thead>
+                  <tbody>${projects.map(p => `
+                    <tr>
+                      <td class="name">${escapeHtml(p.name)}</td>
+                      <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status}</span></td>
+                      <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+                    </tr>
+                  `).join('')}</tbody>
+                </table>`}
+          </div>
+
+          <div>
+            <h2 style="margin-bottom:.7rem">Histórico de convites</h2>
+            ${invitations.length === 0
+              ? '<div class="empty">Nenhum convite enviado ainda.</div>'
+              : `<table class="table">
+                  <thead><tr><th>Enviado</th><th>Expira</th><th>Estado</th></tr></thead>
+                  <tbody>${invitations.map(i => {
+                    const status = i.accepted_at ? 'aceite' : new Date(i.expires_at) < new Date() ? 'expirado' : 'pendente';
+                    return `<tr>
+                      <td><span class="mono" style="font-size:.78rem">${timeAgo(i.created_at)}</span></td>
+                      <td><span class="mono" style="font-size:.78rem;color:var(--graphite-60)">${fmtDate(i.expires_at)}</span></td>
+                      <td><span class="status-pill ${status === 'aceite' ? 'active' : status === 'pendente' ? 'pending' : 'suspended'}">${status}</span></td>
+                    </tr>`;
+                  }).join('')}</tbody>
+                </table>`}
+          </div>
+        </div>
+      `;
+
+      const inviteBtn = document.getElementById('invite');
+      if (inviteBtn) inviteBtn.addEventListener('click', async () => {
+        inviteBtn.disabled = true; inviteBtn.textContent = 'A enviar…';
+        try {
+          const res = await api.inviteClient(id);
+          if (res.warning) {
+            prompt('Email não enviado — copie este link para enviar manualmente:', res.invitation.accept_url);
+            inviteBtn.textContent = 'Enviar/Reenviar convite';
+            inviteBtn.disabled = false;
+          } else {
+            inviteBtn.textContent = '✓ Enviado';
+            setTimeout(() => location.reload(), 800);
+          }
+        } catch (e) {
+          alert('Erro: ' + e.message);
+          inviteBtn.textContent = 'Enviar/Reenviar convite';
+          inviteBtn.disabled = false;
+        }
+      });
+
+      const delBtn = document.getElementById('del');
+      if (delBtn) delBtn.addEventListener('click', async () => {
+        if (!confirm('Apagar ' + client.name + '? Esta ação não pode ser revertida.')) return;
+        try { await api.deleteClient(id); location.href = '/admin/clientes.html'; }
+        catch (e) { alert('Erro: ' + e.message); }
+      });
+    }
+  </script>
+</body>
+</html>

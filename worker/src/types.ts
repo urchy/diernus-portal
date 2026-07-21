@@ -7,6 +7,7 @@ export interface User {
   email: string;
   name: string;
   role: Role;
+  status: 'pending' | 'active' | 'suspended';
   created_at: string;
   last_seen_at: string | null;
 }

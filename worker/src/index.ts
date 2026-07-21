@@ -5,9 +5,8 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import type { AppVariables, Env } from './types.js';
 import { authRoutes } from './auth.js';
-import { projectRoutes, clientsList } from './projects.js';
+import { projectRoutes, clientRoutes } from './projects.js';
 import { inviteRoutes } from './invites.js';
-import { requireAuth, requireRole } from './middleware.js';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -36,10 +35,7 @@ app.get('/api/health', (c) => c.json({ ok: true, env: c.env.ENVIRONMENT, ts: new
 app.route('/api/auth', authRoutes);
 app.route('/api/projects', projectRoutes);
 app.route('/api/invites', inviteRoutes);
-
-app.get('/api/clients', requireAuth, requireRole('studio'), async (c) => {
-  return clientsList(c);
-});
+app.route('/api/clients', clientRoutes);
 
 app.notFound((c) => c.json({ error: 'not found', path: c.req.path }, 404));
 app.onError((err, c) => {

@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Projeto · Diernus Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    import { renderLayout, timeAgo } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { content } = await renderLayout({ active: 'projects', crumbs: ['Projetos', 'Detalhe'] });
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+    const id = new URLSearchParams(location.search).get('id');
+    if (!id) { content.innerHTML = '<div class="error">ID em falta.</div>'; }
+    else {
+      const { project, columns } = await api.project(id);
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/admin/projetos.html">‹ PROJETOS</a>
+            <h1 style="margin-top:.2rem">${escapeHtml(project.name)}</h1>
+            <p class="lede">Cliente: <strong>${escapeHtml(project.client_name)}</strong> · <span class="status-pill ${project.client_status === 'active' ? 'active' : 'pending'}">${project.client_status === 'active' ? 'cliente ativo' : 'cliente pendente'}</span></p>
+          </div>
+        </div>
+
+        <div class="kanban" style="display:grid;grid-template-columns:repeat(${columns.length},1fr);gap:1rem;align-items:start">
+          ${columns.map(c => `
+            <div class="col" data-col-id="${c.id}">
+              <h2 style="font-size:.7rem;font-family:var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--graphite-60);margin-bottom:.6rem;display:flex;justify-content:space-between;align-items:center">
+                <span>${escapeHtml(c.name)}</span>
+                <span class="badge mono" style="background:var(--bone-2);color:var(--graphite-60);padding:2px 8px;border-radius:8px">0</span>
+              </h2>
+              <div class="col-cards" data-col-id="${c.id}" style="min-height:120px"></div>
+              <button class="btn sm ghost" style="width:100%;justify-content:center" data-action="add-card" data-col-id="${c.id}">+ Cartão</button>
+            </div>
+          `).join('')}
+        </div>
+        <p class="lede" style="margin-top:1.5rem">A vista Kanban detalhada (cartões, drag-drop, comentários, ficheiros) chega na Fase 2. Por agora vê as colunas pré-criadas (A Fazer, Em Curso, Concluído).</p>
+      `;
+    }
+  </script>
+</body>
+</html>

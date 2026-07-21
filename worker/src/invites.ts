@@ -1,4 +1,10 @@
-// Invites — studio can invite both clients and team members
+// Invites — studio can invite both:
+//   (a) NEW people (not in the system yet) — POST /api/invites
+//       Used for inviting new team members; the system creates the user
+//       when they accept the invite (status=active).
+//   (b) EXISTING clients (created via POST /api/clients) — POST /api/clients/:id/invite
+//       Used for re-sending an invite; the system activates the existing
+//       pending user when they accept.
 import { Hono } from 'hono';
 import type { AppVariables, Env, User, Invitation } from './types.js';
 import { requireAuth, requireRole } from './middleware.js';
@@ -19,7 +25,8 @@ inviteRoutes.get('/', async (c) => {
   return c.json({ invitations: rows.results });
 });
 
-// POST /api/invites — create an invitation + email it
+// POST /api/invites — invite a NEW person (not yet in the system)
+// For existing clients, use POST /api/clients/:id/invite instead.
 inviteRoutes.post('/', async (c) => {
   const body = await c.req.json().catch(() => null) as { email?: string; name?: string; role?: 'studio' | 'client' } | null;
   if (!body?.email || !body?.name || !body?.role) {
@@ -31,9 +38,9 @@ inviteRoutes.post('/', async (c) => {
   const email = body.email.toLowerCase().trim();
   const me = c.get('user') as User;
 
-  // Refuse if email already used
+  // Refuse if user already exists
   const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
-  if (existing) return c.json({ error: 'já existe uma conta com este email' }, 409);
+  if (existing) return c.json({ error: 'já existe uma conta com este email — para reenviar o convite, abra o cliente e use "Reenviar convite"' }, 409);
 
   // Refuse if there's a pending unexpired invite for the same email
   const pending = await c.env.DB
@@ -42,33 +49,45 @@ inviteRoutes.post('/', async (c) => {
     .first<{ id: string }>();
   if (pending) return c.json({ error: 'já existe um convite pendente para este email' }, 409);
 
+  const inv = await createInvitation(c.env, { email, name: body.name.trim(), role: body.role, invitedBy: me.id });
+
+  return c.json({ invitation: inv.invitation }, 201);
+});
+
+// Helper: create an invitation row + send the email. Returns the invitation payload
+// (with accept_url embedded if email failed).
+export async function createInvitation(
+  env: Env,
+  args: { email: string; name: string; role: 'studio' | 'client'; invitedBy: string },
+): Promise<{ invitation: { id: string; email: string; name: string; role: 'studio' | 'client'; expires_at: string; accept_url?: string }; warning?: string }> {
   const id = uuid();
   const token = randomToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  await c.env.DB
+  await env.DB
     .prepare(`INSERT INTO invitations (id, email, name, role, token, invited_by, expires_at)
               VALUES (?, ?, ?, ?, ?, ?, ?)`)
-    .bind(id, email, body.name.trim(), body.role, token, me.id, expiresAt)
+    .bind(id, args.email, args.name, args.role, token, args.invitedBy, expiresAt)
     .run();
 
+  // Look up inviter name (we don't have it in args; pass it through differently)
+  const inviter = await env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(args.invitedBy).first<{ name: string }>();
+
   const tpl = invitationEmail({
-    name: body.name.trim(),
-    email,
-    role: body.role,
+    name: args.name,
+    email: args.email,
+    role: args.role,
     token,
-    inviterName: me.name,
-    publicUrl: c.env.PUBLIC_URL,
+    inviterName: inviter?.name || 'Diernus',
+    publicUrl: env.PUBLIC_URL,
   });
   try {
-    await sendEmail(c.env, { to: email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+    await sendEmail(env, { to: args.email, subject: tpl.subject, html: tpl.html, text: tpl.text });
+    return { invitation: { id, email: args.email, name: args.name, role: args.role, expires_at: expiresAt } };
   } catch (e) {
-    return c.json({
-      invitation: { id, email, name: body.name, role: body.role, expires_at: expiresAt, accept_url: `${c.env.PUBLIC_URL}/aceitar.html?token=${token}` },
-      warning: `convite criado mas email falhou: ${(e as Error).message}`,
-    }, 201);
+    return {
+      invitation: { id, email: args.email, name: args.name, role: args.role, expires_at: expiresAt, accept_url: `${env.PUBLIC_URL}/aceitar.html?token=${token}` },
+      warning: `email falhou: ${(e as Error).message}`,
+    };
   }
-  return c.json({
-    invitation: { id, email, name: body.name, role: body.role, expires_at: expiresAt },
-  }, 201);
-});
+}
