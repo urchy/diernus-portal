@@ -1,12 +1,13 @@
 // Files — uploaded to R2, attached to projects (and optionally to cards).
 // Both studio and client can upload (studio up to 50 MB, clients up to
-// 25 MB to keep the bucket tidy). When a client uploads, the studio
-// gets a notification so the bell lights up.
+// 25 MB to keep the bucket tidy). Notifications flow BOTH directions:
+//   client uploads  → notifyStudio() (the studio bell lights up)
+//   studio uploads  → notifyClient() (the client bell lights up)
 import { Hono } from 'hono';
 import type { AppVariables, Env, FileRecord, User } from './types.js';
 import { requireAuth } from './middleware.js';
 import { uuid } from './crypto.js';
-import { notifyStudio } from './notifications.js';
+import { notifyStudio, notifyClient } from './notifications.js';
 
 export const fileRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 fileRoutes.use('*', requireAuth);
@@ -102,13 +103,13 @@ fileRoutes.post('/projects/:id/files', async (c) => {
     .bind(id)
     .first<FileRecord>();
 
-  // If a client just uploaded, ping the studio.
+  // Notify the other side — client upload pings studio, studio upload pings client.
+  const ctx = await c.env.DB
+    .prepare(`SELECT name FROM projects WHERE id = ?`)
+    .bind(c.req.param('id'))
+    .first<{ name: string }>();
+  const where = cardId ? ' (no cartão)' : '';
   if (me.role === 'client') {
-    const ctx = await c.env.DB
-      .prepare(`SELECT name FROM projects WHERE id = ?`)
-      .bind(c.req.param('id'))
-      .first<{ name: string }>();
-    const where = cardId ? ' (no cartão)' : '';
     await notifyStudio(c.env, {
       type: 'client_file',
       refKind: 'project',
@@ -116,6 +117,16 @@ fileRoutes.post('/projects/:id/files', async (c) => {
       actor: me,
       message: `“${safeName}” em ${ctx?.name || 'o projeto'}${where}`,
       link: `/admin/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`,
+    });
+  } else {
+    await notifyClient(c.env, {
+      projectId: c.req.param('id'),
+      type: 'studio_file',
+      refKind: 'project',
+      refId: c.req.param('id'),
+      actor: me,
+      message: `“${safeName}” em ${ctx?.name || 'o projeto'}${where}`,
+      link: `/portal/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`,
     });
   }
   return c.json({ file: record }, 201);

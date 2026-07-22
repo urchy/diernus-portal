@@ -97,8 +97,11 @@ export async function renderLayout({ active, crumbs = [] }) {
   // build topbar
   const topbar = document.createElement('header');
   topbar.className = 'topbar';
-  // Only studio users get the notification bell — clients don't receive
-  // studio notifications, so the bell would always be empty for them.
+  // Both studio and client get the bell now — notifications are bidirectional
+  // (client acts → studio bell; studio acts → client bell). The bell
+  // renders below the topbar with a soft backdrop so the dropdown reads
+  // as foreground, not the page as background.
+  const showBell = true;
   topbar.innerHTML = `
     <div class="crumbs">
       ${crumbs.map((c, i) => i < crumbs.length - 1
@@ -107,7 +110,7 @@ export async function renderLayout({ active, crumbs = [] }) {
     </div>
     <span class="spacer"></span>
     <span class="env-pill">${isStudio ? 'estúdio' : 'cliente'}</span>
-    ${isStudio ? `
+    ${showBell ? `
     <div class="topbar-bell" id="topbarBell">
       <button class="bell-btn" id="bellBtn" title="Notificações" aria-label="Notificações">
         ${ICON.bell}
@@ -193,17 +196,31 @@ export async function renderLayout({ active, crumbs = [] }) {
       bellList.innerHTML = '<em style="color:var(--graphite-60);font-size:.85rem;padding:.7rem;display:block;text-align:center">Sem notificações.</em>';
       return;
     }
-    bellList.innerHTML = notifications.map(n => `
+    // Type → icon + short label + CSS hook. The pill shows the icon and a
+    // short label so the user can scan a list of notifications by category.
+    const META = {
+      client_comment:    { icon: '💬', label: 'Comentário' },
+      studio_comment:    { icon: '💬', label: 'Comentário' },
+      client_file:       { icon: '📎', label: 'Ficheiro' },
+      studio_file:       { icon: '📎', label: 'Ficheiro' },
+      card_moved:        { icon: '↗', label: 'Cartão' },
+      card_created:      { icon: '+', label: 'Cartão' },
+      project_completed: { icon: '✓', label: 'Projeto' },
+      project_status:    { icon: 'ⓘ', label: 'Projeto' },
+    };
+    bellList.innerHTML = notifications.map(n => {
+      const m = META[n.type] || { icon: '•', label: 'Notificação' };
+      return `
       <a class="bell-item ${n.is_read ? '' : 'unread'}" href="${escapeHtml(n.link)}" data-notif-id="${escapeHtml(n.id)}">
         <div class="bell-item-head">
-          <span class="bell-item-type bell-type-${escapeHtml(n.type)}">${n.type === 'client_comment' ? '💬 Comentário' : '📎 Ficheiro'}</span>
+          <span class="bell-item-type bell-type-${escapeHtml(n.type)}"><span class="bell-item-icon">${m.icon}</span> ${m.label}</span>
           <span class="bell-item-time">${timeAgo(n.created_at)}</span>
         </div>
         <div class="bell-item-title">${escapeHtml(n.title || 'Notificação')}</div>
         <div class="bell-item-msg">${escapeHtml(n.message)}</div>
         <button class="bell-item-dismiss" data-dismiss="${escapeHtml(n.id)}" title="Dispensar">✕</button>
       </a>
-    `).join('');
+    `;}).join('');
     bellList.querySelectorAll('[data-dismiss]').forEach(btn => {
       btn.addEventListener('click', async e => {
         e.preventDefault();

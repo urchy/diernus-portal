@@ -1,11 +1,12 @@
 // Comments — both studio and client can post on cards in their projects.
-// When a client comments, fire a notification to the studio so the
-// bell lights up in their topbar.
+// Notifications flow BOTH directions:
+//   client comments  → notifyStudio() (the studio bell lights up)
+//   studio comments  → notifyClient() (the client bell lights up)
 import { Hono } from 'hono';
 import type { AppVariables, Env, User } from './types.js';
 import { requireAuth } from './middleware.js';
 import { uuid } from './crypto.js';
-import { notifyStudio } from './notifications.js';
+import { notifyStudio, notifyClient } from './notifications.js';
 
 export const commentRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -57,19 +58,19 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
     .bind(id)
     .first<any>();
 
-  // If a client just commented, ping the studio so the bell lights up.
-  if (me.role === 'client') {
-    // fetch the card title + project id for a meaningful message
-    const ctx = await c.env.DB
-      .prepare(`SELECT c.title AS card_title, c.project_id, p.name AS project_name
-                FROM cards c JOIN projects p ON p.id = c.project_id
-                WHERE c.id = ?`)
-      .bind(c.req.param('cardId'))
-      .first<{ card_title: string; project_id: string; project_name: string }>();
-    if (ctx) {
-      const snippet = body.body.trim().length > 80
-        ? body.body.trim().slice(0, 77) + '…'
-        : body.body.trim();
+  // Fire the right notification depending on who commented.
+  const ctx = await c.env.DB
+    .prepare(`SELECT c.title AS card_title, c.project_id, p.name AS project_name
+              FROM cards c JOIN projects p ON p.id = c.project_id
+              WHERE c.id = ?`)
+    .bind(c.req.param('cardId'))
+    .first<{ card_title: string; project_id: string; project_name: string }>();
+  if (ctx) {
+    const snippet = body.body.trim().length > 80
+      ? body.body.trim().slice(0, 77) + '…'
+      : body.body.trim();
+    if (me.role === 'client') {
+      // client → studio: title "Novo comentário", body "em 'card' — 'snippet'"
       await notifyStudio(c.env, {
         type: 'client_comment',
         refKind: 'card',
@@ -77,6 +78,17 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
         actor: me,
         message: `em “${ctx.card_title}” — “${snippet}”`,
         link: `/admin/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`,
+      });
+    } else {
+      // studio → client: title "Resposta do estúdio", body "em 'card' — 'snippet'"
+      await notifyClient(c.env, {
+        projectId: ctx.project_id,
+        type: 'studio_comment',
+        refKind: 'card',
+        refId: c.req.param('cardId'),
+        actor: me,
+        message: `em “${ctx.card_title}” — “${snippet}”`,
+        link: `/portal/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`,
       });
     }
   }

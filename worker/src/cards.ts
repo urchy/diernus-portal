@@ -1,10 +1,13 @@
 // Cards — CRUD + move
 // Studio: full CRUD on any card in any of their projects
 // Client:  read-only on cards in their own projects; comments are handled separately
+// Studio-side mutations (create / move) also notify the project's client
+// so the client's bell lights up.
 import { Hono } from 'hono';
 import type { AppVariables, Env, User, Card, CardPriority } from './types.js';
 import { requireAuth, requireRole } from './middleware.js';
 import { uuid } from './crypto.js';
+import { notifyClient } from './notifications.js';
 
 export const cardRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -185,6 +188,16 @@ cardRoutes.post('/projects/:id/cards', requireRole('studio'), async (c) => {
     )
     .run();
   const card = await c.env.DB.prepare('SELECT * FROM cards WHERE id = ?').bind(id).first<Card>();
+  // notify the client — a new card appeared on their project
+  await notifyClient(c.env, {
+    projectId: c.req.param('id'),
+    type: 'card_created',
+    refKind: 'card',
+    refId: id,
+    actor: me,
+    message: `“${card!.title}”${card!.due_date ? ` — prazo ${card!.due_date}` : ''}`,
+    link: `/portal/projeto.html?id=${c.req.param('id')}&card=${id}`,
+  });
   return c.json({ card }, 201);
 });
 
@@ -259,6 +272,23 @@ cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
     .bind(body.column_id, pos, c.req.param('id'))
     .run();
 
+  // notify the client — the card moved (use the destination column name)
+  // but only if the column actually changed (otherwise it'd be a no-op move
+  // and the bell would be noisy)
+  const moved = existing.column_id !== body.column_id;
+  if (moved) {
+    const me = c.get('user') as User;
+    await notifyClient(c.env, {
+      projectId: existing.project_id,
+      type: 'card_moved',
+      refKind: 'card',
+      refId: c.req.param('id'),
+      actor: me,
+      message: `“${existing.title}” → ${targetCol.name}`,
+      link: `/portal/projeto.html?id=${existing.project_id}&card=${c.req.param('id')}`,
+    });
+  }
+
   // Auto-complete: if this card just landed in a "Concluído" column and every
   // other card in the project is also in a "Concluído" column, mark the
   // project as completed so it falls off the multi-project board.
@@ -282,6 +312,21 @@ cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
           .bind(existing.project_id)
           .run();
         project_completed = true;
+        // tell the client their project is done
+        const me = c.get('user') as User;
+        const projRow = await c.env.DB
+          .prepare('SELECT name FROM projects WHERE id = ?')
+          .bind(existing.project_id)
+          .first<{ name: string }>();
+        await notifyClient(c.env, {
+          projectId: existing.project_id,
+          type: 'project_completed',
+          refKind: 'project',
+          refId: existing.project_id,
+          actor: me,
+          message: `“${projRow?.name || 'o projeto'}” está concluído.`,
+          link: `/portal/projeto.html?id=${existing.project_id}`,
+        });
       }
     }
   }

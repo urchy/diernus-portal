@@ -808,11 +808,12 @@ h2 {
 .bell-dropdown[hidden] { display: none; }  /* same fix for the dropdown — display:flex would otherwise override [hidden] */
 .bell-backdrop {
   position: fixed; inset: 0;
-  background: rgba(35, 33, 28, .18);
-  backdrop-filter: blur(2px);
-  -webkit-backdrop-filter: blur(2px);
+  background: rgba(35, 33, 28, .08);
+  /* No blur — earlier backdrop-filter:blur(2px) made the page behind
+     unreadable, the dropdown felt like it was floating in front of a
+     frosted wall. Just a soft dim is enough to signal focus. */
   z-index: 90;
-  opacity: 0; transition: opacity .18s ease;
+  opacity: 0; transition: opacity .15s ease;
   pointer-events: none;
 }
 .bell-backdrop.on { opacity: 1; pointer-events: auto; }
@@ -854,9 +855,17 @@ h2 {
   font-family: var(--mono); font-size: .6rem; letter-spacing: .08em;
   text-transform: uppercase; padding: 1px 6px; border-radius: 3px;
   background: var(--graphite-15); color: var(--graphite);
+  display: inline-flex; align-items: center; gap: .3rem;
 }
-.bell-type-client_comment { background: var(--cobalt-soft); color: var(--cobalt); }
-.bell-type-client_file    { background: rgba(194,135,58,.18); color: var(--amber); }
+.bell-item-icon { font-size: .85rem; line-height: 1; }
+.bell-type-client_comment    { background: var(--cobalt-soft); color: var(--cobalt); }
+.bell-type-client_file       { background: rgba(194,135,58,.18); color: var(--amber); }
+.bell-type-studio_comment    { background: var(--cobalt-soft); color: var(--cobalt); }
+.bell-type-studio_file       { background: rgba(194,135,58,.18); color: var(--amber); }
+.bell-type-card_moved        { background: var(--graphite-08); color: var(--graphite); }
+.bell-type-card_created      { background: var(--graphite-08); color: var(--graphite); }
+.bell-type-project_completed { background: rgba(34,140,76,.15); color: #1e8e3e; }
+.bell-type-project_status    { background: var(--graphite-08); color: var(--graphite); }
 .bell-item-time {
   font-family: var(--mono); font-size: .62rem; color: var(--graphite-60);
 }
