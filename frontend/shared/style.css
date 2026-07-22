@@ -832,3 +832,11 @@ h2 {
   border-radius: 3px; line-height: 1;
 }
 .bell-item-dismiss:hover { background: var(--graphite-08); color: var(--stamp); }
+
+/* ==========================================================================
+   TABLE ACTIONS — last column with the "Abrir" button on project lists
+   ========================================================================== */
+.table th.row-actions, .table td.row-actions {
+  text-align: right; width: 1%; white-space: nowrap; padding-left: 1rem;
+}
+.table td.row-actions .btn { padding: .3rem .7rem; font-size: .72rem; }

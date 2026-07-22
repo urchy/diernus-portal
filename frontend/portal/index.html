@@ -30,12 +30,13 @@
       ${projects.length === 0
         ? '<div class="empty">Ainda não tem projetos. O estúdio criará um em breve.</div>'
         : `<table class="table">
-            <thead><tr><th>Projeto</th><th>Estado</th><th>Atualizado</th></tr></thead>
+            <thead><tr><th>Projeto</th><th>Estado</th><th>Atualizado</th><th class="row-actions"></th></tr></thead>
             <tbody>${projects.map(p => `
               <tr>
-                <td class="name">${escapeHtml(p.name)}<small>${escapeHtml(p.description || '—')}</small></td>
+                <td class="name"><a href="/portal/projeto.html?id=${encodeURIComponent(p.id)}">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
                 <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
                 <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+                <td class="row-actions"><a class="btn sm primary" href="/portal/projeto.html?id=${encodeURIComponent(p.id)}">Abrir ›</a></td>
               </tr>
             `).join('')}</tbody>
           </table>`}

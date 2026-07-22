@@ -47,14 +47,15 @@
         ${projects.length === 0
           ? '<div class="empty">Sem projetos. Crie um cliente primeiro em <a href="/admin/clientes.html">Clientes</a>, depois crie um projeto.</div>'
           : `<table class="table">
-              <thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th></tr></thead>
+              <thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th><th class="row-actions"></th></tr></thead>
               <tbody>${projects.map(p => `
                 <tr>
-                  <td class="name"><a href="/admin/projeto.html?id=${p.id}">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
+                  <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(p.id)}">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
                   <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
                   <td>${p.hourly_rate != null ? `<span class="mono" style="font-size:.78rem">${Number(p.hourly_rate).toFixed(0)} €/h</span>` : '<span class="mono" style="color:var(--graphite-60);font-size:.78rem">—</span>'}</td>
                   <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
                   <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+                  <td class="row-actions"><a class="btn sm primary" href="/admin/projeto.html?id=${encodeURIComponent(p.id)}">Abrir ›</a></td>
                 </tr>
               `).join('')}</tbody>
             </table>`}
