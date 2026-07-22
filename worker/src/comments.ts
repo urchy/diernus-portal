@@ -75,7 +75,7 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
         refKind: 'card',
         refId: c.req.param('cardId'),
         actor: me,
-        message: `${me.name} comentou em "${ctx.card_title}" (${ctx.project_name}): "${snippet}"`,
+        message: `em “${ctx.card_title}” — “${snippet}”`,
         link: `/admin/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`,
       });
     }

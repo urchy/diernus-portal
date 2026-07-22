@@ -13,9 +13,10 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { renderLayout, fmtDate, timeAgo, pageLoading, safeRender } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { content } = await renderLayout({ active: 'invites', crumbs: ['Convites'] });
+    const loading = pageLoading(content, 'A carregar convites…');
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     async function render() {
@@ -48,7 +49,7 @@
           </div>
         </div>
         ${invitations.length === 0
-          ? '<div class="empty">Nenhum convite enviado ainda. Crie um cliente em <a href="/admin/clientes.html">Clientes</a>.</div>'
+          ? '<div class="empty"><div class="empty-title">Nenhum convite enviado</div><div class="empty-sub">Quando criar um cliente em <a href="/admin/clientes.html">Clientes</a> e enviar o convite, ele aparece aqui.</div></div>'
           : `<table class="table">
               <thead><tr><th>Nome</th><th>Para</th><th>Enviado</th><th>Expira</th><th>Estado</th></tr></thead>
               <tbody>
@@ -60,7 +61,7 @@
       `;
     }
 
-    render();
+    safeRender(loading, render);
   </script>
 </body>
 </html>

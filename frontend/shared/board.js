@@ -12,6 +12,15 @@ const PRIORITY_COLOR = {
   high:   { bg: 'rgba(179,35,46,.12)',  fg: 'var(--stamp)' },
 };
 
+// Tiny PT pluraliser — keeps the count phrase grammatically correct.
+//   pluralise(1, 'cartão', 'cartões')           → "1 cartão"
+//   pluralise(2, 'cartão', 'cartões')           → "2 cartões"
+//   pluralise(1, 'atrasado', 'atrasados')       → "1 atrasado"
+function pluralise(n, singular, plural) {
+  if (n == null || n === 0) return `0 ${plural}`;
+  return `${n} ${n === 1 ? singular : plural}`;
+}
+
 /**
  * Mount a Kanban board into `mountEl`.
  * @param mountEl  HTMLElement to render into
@@ -654,7 +663,7 @@ function buildSummaryHeader(project, summary, canEdit) {
     <div class="summary-card">
       <div class="summary-label">Prazo</div>
       <div class="summary-value ${dueClass}">${escapeHtml(dueLabel.split(' ')[0])}</div>
-      <div class="summary-sub">${project.due_date ? new Date(project.due_date).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' }) : 'definir prazo'}${summary.overdue_count > 0 ? ' · ' + summary.overdue_count + ' cartão(ões) atrasado(s)' : ''}</div>
+      <div class="summary-sub">${project.due_date ? new Date(project.due_date).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' }) : 'definir prazo'}${summary.overdue_count > 0 ? ' · ' + pluralise(summary.overdue_count, 'cartão atrasado', 'cartões atrasados') : ''}</div>
     </div>
     ${summary.next_due_card ? `
     <div class="summary-card summary-next">

@@ -247,7 +247,27 @@ h2 {
 .status-pill.suspended { background: rgba(179,35,46,.12);  color: var(--stamp); }
 .status-pill.online    { background: rgba(34,140,76,.15);  color: #1e8e3e; }
 
-.empty { padding: 3rem 1rem; text-align: center; color: var(--graphite-60); font-style: italic; background: var(--bone-2); border: 1px dashed var(--graphite-35); border-radius: 6px; }
+.empty {
+  padding: 3.5rem 1.5rem; text-align: center; color: var(--graphite-60);
+  background: var(--bone-2); border: 1px dashed var(--graphite-35); border-radius: 8px;
+  position: relative; overflow: hidden;
+}
+.empty::before {
+  content: ''; position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  width: 180px; height: 180px;
+  background:
+    radial-gradient(circle, var(--graphite-08) 0%, transparent 70%);
+  pointer-events: none; z-index: 0;
+}
+.empty > * { position: relative; z-index: 1; }
+.empty-title {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 700;
+  font-size: 1.05rem; color: var(--graphite); margin-bottom: .35rem;
+  font-style: normal; text-transform: none; letter-spacing: -.005em;
+}
+.empty-sub { font-size: .9rem; font-style: italic; max-width: 36em; margin: 0 auto; }
+.empty-cta { margin-top: 1.1rem; }
 .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid var(--graphite-15); border-top-color: var(--cobalt); border-radius: 50%; animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -724,6 +744,15 @@ h2 {
 }
 .fin-stat-value small { font-size: 1rem; font-weight: 500; color: var(--graphite-60); margin-left: 2px; }
 .fin-stat-sub { font-family: var(--mono); font-size: .65rem; color: var(--graphite-60); margin-top: auto; }
+.fin-stat-bar {
+  height: 4px; background: var(--graphite-08);
+  border-radius: 2px; overflow: hidden; margin-top: .35rem;
+}
+.fin-stat-bar-fill {
+  height: 100%; background: var(--cobalt);
+  border-radius: 2px; transition: width .4s ease;
+}
+.fin-spark { margin-top: .3rem; opacity: .85; }
 
 .fin-chart {
   background: #fff; border: 1px solid var(--graphite-15);
@@ -777,6 +806,16 @@ h2 {
 }
 .bell-badge[hidden] { display: none; }  /* override the .bell-badge display:inline-flex so the [hidden] attribute actually hides it */
 .bell-dropdown[hidden] { display: none; }  /* same fix for the dropdown — display:flex would otherwise override [hidden] */
+.bell-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(35, 33, 28, .18);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+  z-index: 90;
+  opacity: 0; transition: opacity .18s ease;
+  pointer-events: none;
+}
+.bell-backdrop.on { opacity: 1; pointer-events: auto; }
 .bell-dropdown {
   position: absolute; top: calc(100% + .5rem); right: 0;
   width: 380px; max-width: calc(100vw - 2rem);
@@ -821,10 +860,15 @@ h2 {
 .bell-item-time {
   font-family: var(--mono); font-size: .62rem; color: var(--graphite-60);
 }
+.bell-item-title {
+  font-size: .82rem; font-weight: 600; color: var(--graphite);
+  margin-bottom: .15rem; letter-spacing: -.005em;
+}
 .bell-item-msg {
-  font-size: .85rem; color: var(--graphite);
+  font-size: .85rem; color: var(--graphite-60);
   overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
   -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+  line-height: 1.35;
 }
 .bell-item-dismiss {
   position: absolute; top: .5rem; right: .5rem;
@@ -841,10 +885,19 @@ h2 {
 .table th, .table td { overflow-wrap: anywhere; word-break: break-word; }
 .table th.row-actions, .table td.row-actions {
   text-align: right; width: 1%; white-space: nowrap; padding-left: 1rem;
+  border-bottom-color: transparent;  /* prevent the empty header cell from
+                                       showing a stray line in the action col */
 }
+.table thead th.row-actions { border-bottom-color: var(--graphite-15); }
 .table td.row-actions .btn { padding: .3rem .7rem; font-size: .72rem; }
 .table tr td.row-actions { padding-right: 1rem; }
 .table tr:hover td.row-actions { background: transparent; }  /* keep action col clean on row hover */
+
+/* Per-row navigation buttons default to ghost (less visual weight than
+   the page's primary CTA). Pages can override with .row-actions .btn.primary
+   if they really want a primary button in a row. */
+.table .row-actions .btn { background: transparent; color: var(--graphite); border-color: var(--graphite-35); }
+.table .row-actions .btn:hover { border-color: var(--graphite); color: var(--graphite); }
 
 /* ==========================================================================
    PAGE-LEVEL HELPERS — back link, loading state, inline empty hint

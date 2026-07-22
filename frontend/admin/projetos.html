@@ -28,9 +28,10 @@
     </div>
   </div>
   <script type="module">
-    import { renderLayout, timeAgo } from '/shared/layout.js';
+    import { renderLayout, timeAgo, pageLoading, safeRender } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { content } = await renderLayout({ active: 'projects', crumbs: ['Projetos'] });
+    const loading = pageLoading(content, 'A carregar projetos…');
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     async function render() {
@@ -45,7 +46,7 @@
           <div class="actions"><button class="btn primary" id="newProject">+ Novo projeto</button></div>
         </div>
         ${projects.length === 0
-          ? '<div class="empty">Sem projetos. Crie um cliente primeiro em <a href="/admin/clientes.html">Clientes</a>, depois crie um projeto.</div>'
+          ? '<div class="empty"><div class="empty-title">Sem projetos ainda</div><div class="empty-sub">Crie um cliente primeiro em <a href="/admin/clientes.html">Clientes</a>, depois crie um projeto para esse cliente.</div></div>'
           : `<table class="table">
               <thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th><th class="row-actions"></th></tr></thead>
               <tbody>${projects.map(p => `
@@ -102,7 +103,7 @@
       }
     });
 
-    render();
+    safeRender(loading, render);
   </script>
 </body>
 </html>

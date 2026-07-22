@@ -13,9 +13,10 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout } from '/shared/layout.js';
+    import { renderLayout, pageLoading, safeRender } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { content } = await renderLayout({ active: 'finance', crumbs: ['Finanças'] });
+    const loading = pageLoading(content, 'A carregar finanças…');
 
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
     function eur(n) {
@@ -70,11 +71,16 @@
             <div class="fin-stat-label">Horas no período</div>
             <div class="fin-stat-value">${formatHours(d.period.month ? t.period_hours : t.all_time_hours)}<small>h</small></div>
             <div class="fin-stat-sub">${d.period.month ? `este mês` : `desde o início`}</div>
+            ${!d.period.month ? renderSparkline(d.monthly) : ''}
           </div>
           <div class="fin-stat">
             <div class="fin-stat-label">Projetos</div>
             <div class="fin-stat-value">${t.projects}</div>
             <div class="fin-stat-sub">${t.active_projects} ativos · ${t.completed_projects} concluídos</div>
+            <div class="fin-stat-bar">
+              <div class="fin-stat-bar-fill" style="width:${t.projects > 0 ? Math.round((t.completed_projects / t.projects) * 100) : 0}%;background:var(--cobalt)"></div>
+            </div>
+            <div class="fin-stat-sub" style="margin-top:.2rem">${t.projects > 0 ? Math.round((t.completed_projects / t.projects) * 100) : 0}% concluído</div>
           </div>
           <div class="fin-stat">
             <div class="fin-stat-label">Clientes</div>
@@ -101,6 +107,19 @@
       `;
       document.getElementById('yearSel').addEventListener('change', e => { year = Number(e.target.value); load(); });
       document.getElementById('monthSel').addEventListener('change', e => { month = e.target.value ? Number(e.target.value) : null; load(); });
+    }
+
+    // Sparkline — 12 months of hours, inline SVG. Subtle data viz, not a chart.
+    function renderSparkline(months) {
+      const max = Math.max(0.1, ...months.map(m => m.hours));
+      const W = 200, H = 28, barW = W / 12;
+      const bars = months.map((m, i) => {
+        const h = Math.max(2, (m.hours / max) * H);
+        const x = i * barW;
+        const y = H - h;
+        return `<rect x="${x + 1}" y="${y}" width="${barW - 2}" height="${h}" rx="1" fill="${m.hours > 0 ? 'var(--cobalt)' : 'var(--graphite-15)'}"></rect>`;
+      }).join('');
+      return `<svg class="fin-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="presentation">${bars}</svg>`;
     }
 
     function renderMonthlyChart(months) {
@@ -211,7 +230,7 @@
       return h.toFixed(1).replace(/\.0$/, '');
     }
 
-    load();
+    safeRender(loading, load);
   </script>
 </body>
 </html>

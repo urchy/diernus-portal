@@ -27,9 +27,10 @@
     </div>
   </div>
   <script type="module">
-    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { renderLayout, fmtDate, timeAgo, pageLoading, safeRender } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { content } = await renderLayout({ active: 'clients', crumbs: ['Clientes'] });
+    const loading = pageLoading(content, 'A carregar clientes…');
 
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
@@ -51,7 +52,7 @@
         </div>
 
         ${clients.length === 0
-          ? '<div class="empty">Ainda não tem clientes. Clique em "+ Novo cliente" para começar.</div>'
+          ? '<div class="empty"><div class="empty-title">Sem clientes ainda</div><div class="empty-sub">Crie o primeiro cliente para começar. Não enviamos email — só quando enviar o convite.</div><div class="empty-cta"><button class="btn primary" onclick="document.getElementById(\'newClient\').click()">+ Novo cliente</button></div></div>'
           : `<table class="table">
               <thead>
                 <tr><th>Nome</th><th>Email</th><th>Estado</th><th>Convite</th><th>Criado</th><th></th></tr>
@@ -138,7 +139,7 @@
       btn.disabled = false; btn.textContent = original;
     }
 
-    render();
+    safeRender(loading, render);
   </script>
 </body>
 </html>

@@ -199,6 +199,7 @@ export async function renderLayout({ active, crumbs = [] }) {
           <span class="bell-item-type bell-type-${escapeHtml(n.type)}">${n.type === 'client_comment' ? '💬 Comentário' : '📎 Ficheiro'}</span>
           <span class="bell-item-time">${timeAgo(n.created_at)}</span>
         </div>
+        <div class="bell-item-title">${escapeHtml(n.title || 'Notificação')}</div>
         <div class="bell-item-msg">${escapeHtml(n.message)}</div>
         <button class="bell-item-dismiss" data-dismiss="${escapeHtml(n.id)}" title="Dispensar">✕</button>
       </a>
@@ -240,10 +241,29 @@ export async function renderLayout({ active, crumbs = [] }) {
   }
 
   if (bellBtn && bellDropdown) {
+    // Backdrop: dims the rest of the page when the bell is open so the
+    // dropdown clearly sits "above" the content (otherwise the action buttons
+    // in the page head are partially covered and look broken).
+    let bellBackdrop = null;
+    function setBellOpen(open) {
+      bellOpen = open;
+      bellDropdown.hidden = !open;
+      if (open) {
+        if (!bellBackdrop) {
+          bellBackdrop = document.createElement('div');
+          bellBackdrop.className = 'bell-backdrop';
+          bellBackdrop.addEventListener('click', () => setBellOpen(false));
+          document.body.appendChild(bellBackdrop);
+        }
+        requestAnimationFrame(() => bellBackdrop.classList.add('on'));
+      } else if (bellBackdrop) {
+        bellBackdrop.classList.remove('on');
+      }
+    }
+
     bellBtn.addEventListener('click', async (e) => {
       e.stopPropagation();
-      bellOpen = !bellOpen;
-      bellDropdown.hidden = !bellOpen;
+      setBellOpen(!bellOpen);
       if (bellOpen) {
         await refreshBellList();
         // focus the first item for keyboard nav
@@ -251,18 +271,18 @@ export async function renderLayout({ active, crumbs = [] }) {
         if (first) first.focus();
       }
     });
-    // click outside closes
+    // click outside closes (backdrop click is handled above; this is for
+    // clicking on the sidebar while the bell is open)
     document.addEventListener('click', e => {
       if (!bellOpen) return;
       if (e.target.closest('#topbarBell')) return;
-      bellOpen = false;
-      bellDropdown.hidden = true;
+      if (e.target.closest('.bell-backdrop')) return;
+      setBellOpen(false);
     });
     // Esc closes
     document.addEventListener('keydown', e => {
       if (bellOpen && e.key === 'Escape') {
-        bellOpen = false;
-        bellDropdown.hidden = true;
+        setBellOpen(false);
         bellBtn.focus();
       }
     });
@@ -340,6 +360,43 @@ export function initials(name) {
 }
 export function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+/**
+ * Run a page's main render inside a try/catch with a loading skeleton + an
+ * error fallback. Use this instead of raw `await render()` at module top-level
+ * so a single failed API call doesn't leave the user staring at a blank page.
+ *
+ *   const { content } = await renderLayout({ ... });
+ *   const loading = pageLoading(content, 'A carregar projetos…');
+ *   safeRender(content, loading, async () => {
+ *     const { projects } = await api.projects();
+ *     content.innerHTML = '...';
+ *   });
+ */
+export function pageLoading(content, label = 'A carregar…') {
+  const el = document.createElement('div');
+  el.className = 'page-loading';
+  el.innerHTML = `<div class="spinner"></div><span>${escapeHtml(label)}</span>`;
+  content.appendChild(el);
+  return el;
+}
+export function pageError(loadingEl, err, { backHref, backLabel = '‹ Voltar' } = {}) {
+  const msg = (err && err.message) || String(err) || 'erro desconhecido';
+  loadingEl.innerHTML = `
+    <div class="error" style="max-width:520px;margin:2rem auto">
+      <strong>Não foi possível carregar.</strong><br>${escapeHtml(msg)}
+      ${backHref ? `<br><br><a class="btn ghost" href="${escapeHtml(backHref)}">${escapeHtml(backLabel)}</a>` : ''}
+    </div>`;
+}
+export async function safeRender(loadingEl, fn) {
+  try {
+    await fn();
+    loadingEl.remove();
+  } catch (e) {
+    console.error('[safeRender]', e);
+    pageError(loadingEl, e);
+  }
 }
 
 // showToast — quick bottom-right notice (used by boards, modals, etc.)

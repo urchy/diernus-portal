@@ -31,6 +31,16 @@ export async function notifyStudio(
   await env.DB.batch(stmts);
 }
 
+// Title is derived from the notification type at serialize time. Keeps the
+// schema lean (no extra column) and lets us tweak titles without a migration.
+function titleFor(type: string): string {
+  switch (type) {
+    case 'client_comment': return 'Novo comentário';
+    case 'client_file':    return 'Novo ficheiro';
+    default: return 'Notificação';
+  }
+}
+
 // GET /api/notifications — list for the current user, newest first
 notificationRoutes.get('/', async (c) => {
   const me = c.get('user') as User;
@@ -47,7 +57,11 @@ notificationRoutes.get('/', async (c) => {
     .bind(me.id)
     .first<{ n: number }>();
   return c.json({
-    notifications: rows.results.map(r => ({ ...r, is_read: !!r.is_read })),
+    notifications: rows.results.map(r => ({
+      ...r,
+      is_read: !!r.is_read,
+      title: titleFor(r.type),
+    })),
     unread_count: unread?.n || 0,
   });
 });

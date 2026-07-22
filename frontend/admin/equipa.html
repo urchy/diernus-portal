@@ -27,9 +27,10 @@
     </div>
   </div>
   <script type="module">
-    import { renderLayout, fmtDate, timeAgo } from '/shared/layout.js';
+    import { renderLayout, fmtDate, timeAgo, pageLoading, safeRender } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { content } = await renderLayout({ active: 'team', crumbs: ['Equipa'] });
+    const loading = pageLoading(content, 'A carregar equipa…');
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     async function render() {
@@ -52,7 +53,7 @@
 
         <h2 style="margin-bottom:.7rem">No estúdio (${members.length})</h2>
         ${members.length === 0
-          ? '<div class="empty">Sem membros ativos.</div>'
+          ? '<div class="empty"><div class="empty-title">Ainda só você</div><div class="empty-sub">Convide outra pessoa para o estúdio para partilhar projetos e tempo.</div></div>'
           : `<table class="table">
               <thead><tr><th>Nome</th><th>Email</th><th>Último acesso</th></tr></thead>
               <tbody>${members.map(m => `
@@ -67,7 +68,7 @@
         <h2 style="margin:1.6rem 0 .7rem">Convites pendentes</h2>
         ${(() => {
           const pending = (team.invitations || []).filter(i => !i.accepted_at && new Date(i.expires_at) > new Date());
-          if (pending.length === 0) return '<div class="empty">Sem convites pendentes.</div>';
+          if (pending.length === 0) return '<div class="empty"><div class="empty-title">Sem convites pendentes</div><div class="empty-sub">Quando enviar um convite, ele aparece aqui até ser aceite ou expirar.</div></div>';
           return `<table class="table">
             <thead><tr><th>Nome</th><th>Email</th><th>Expira</th><th></th></tr></thead>
             <tbody>${pending.map(i => `
@@ -123,7 +124,7 @@
       }
     });
 
-    render();
+    safeRender(loading, render);
   </script>
 </body>
 </html>

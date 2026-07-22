@@ -13,7 +13,7 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout, timeAgo } from '/shared/layout.js';
+    import { renderLayout, timeAgo, pageLoading, pageError, escapeHtml } from '/shared/layout.js';
     import { api } from '/shared/api.js';
 
     const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
@@ -22,16 +22,23 @@
       medium: { bg: 'rgba(44,73,199,.12)',  fg: 'var(--cobalt)' },
       high:   { bg: 'rgba(179,35,46,.12)',  fg: 'var(--stamp)' },
     };
-    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     const { me, content } = await renderLayout({ active: 'overview', crumbs: ['Visão geral'] });
+    const loading = pageLoading(content, 'A carregar visão geral…');
 
     // Pull everything we need in parallel
-    const [c, p, b] = await Promise.all([
-      api.clients().catch(() => ({ clients: [] })),
-      api.projects().catch(() => ({ projects: [] })),
-      api.boardAll().catch(() => ({ projects: [], columns: [], cards: [] })),
-    ]);
+    let c, p, b;
+    try {
+      [c, p, b] = await Promise.all([
+        api.clients(),
+        api.projects(),
+        api.boardAll(),
+      ]);
+    } catch (e) {
+      pageError(loading, e, { backHref: '/admin/' });
+      throw e;  // pageError replaces the loading; the throw halts rendering so we don't double-set innerHTML
+    }
+    loading.remove();
     const clients = c.clients || [];
     const projects = p.projects || [];
     const allCards = b.cards || [];

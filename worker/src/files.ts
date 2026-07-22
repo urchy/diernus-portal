@@ -114,7 +114,7 @@ fileRoutes.post('/projects/:id/files', async (c) => {
       refKind: 'project',
       refId: c.req.param('id'),
       actor: me,
-      message: `${me.name} enviou "${safeName}" para "${ctx?.name || 'o projeto'}"${where}.`,
+      message: `“${safeName}” em ${ctx?.name || 'o projeto'}${where}`,
       link: `/admin/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`,
     });
   }
