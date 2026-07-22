@@ -13,34 +13,87 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout, timeAgo } from '/shared/layout.js';
+    import { renderLayout, fmtDate, timeAgo, pageLoading, safeRender, escapeHtml } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Os meus projetos'] });
-    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    const loading = pageLoading(content, 'A carregar projetos…');
 
-    const { projects } = await api.projects();
-    content.innerHTML = `
-      <div class="page-head">
-        <div>
-          <span class="eyebrow">Os seus projetos</span>
-          <h1>Olá, ${me.name.split(' ')[0]}</h1>
-          <p class="lede">Aqui pode acompanhar o progresso do seu projeto, comentar nos cartões e descarregar os ficheiros partilhados pelo estúdio.</p>
+    // Small helpers — keep card rendering readable
+    function daysUntil(dueIso) {
+      if (!dueIso) return null;
+      const d = new Date(dueIso);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      d.setHours(0, 0, 0, 0);
+      return Math.round((d - today) / 86400000);
+    }
+    function dueLabel(days) {
+      if (days == null) return null;
+      if (days < 0)  return { text: `atrasado há ${Math.abs(days)} d`, tone: 'stamp' };
+      if (days === 0) return { text: 'vence hoje', tone: 'stamp' };
+      if (days <= 7)  return { text: `vence em ${days} d`, tone: 'amber' };
+      return { text: `prazo ${fmtDate(daysToIso(days))}`, tone: 'graphite' };
+    }
+    function daysToIso(days) {
+      const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + days);
+      return d.toISOString().slice(0, 10);
+    }
+
+    async function render() {
+      const { projects } = await api.projects();
+      const active    = projects.filter(p => p.status === 'active');
+      const completed = projects.filter(p => p.status === 'completed');
+
+      // Render a project as a card
+      const card = p => {
+        const days = daysUntil(p.due_date);
+        const due  = days != null ? dueLabel(days) : null;
+        return `
+          <a class="portal-card ${p.status === 'completed' ? 'is-completed' : ''}" href="/portal/projeto.html?id=${encodeURIComponent(p.id)}">
+            <div class="portal-card-status">
+              <span class="status-pill ${p.status === 'active' ? 'online' : 'active'}">${p.status === 'active' ? 'em curso' : 'concluído'}</span>
+            </div>
+            <div class="portal-card-body">
+              <h3 class="portal-card-name">${escapeHtml(p.name)}</h3>
+              ${p.description ? `<p class="portal-card-desc">${escapeHtml(p.description)}</p>` : ''}
+              <div class="portal-card-meta">
+                ${due ? `<span class="mono portal-due portal-due-${due.tone}">${due.text}</span>` : ''}
+                <span class="mono portal-updated">atualizado ${timeAgo(p.updated_at)}</span>
+              </div>
+            </div>
+            <span class="portal-card-cta">ver projeto <span class="portal-card-arrow">›</span></span>
+          </a>
+        `;
+      };
+
+      // Greeting uses the first name; fall back to the full name
+      const firstName = (me.name || me.email || '').trim().split(/\s+/)[0] || 'olá';
+      const activeLine = active.length === 1 ? '1 projeto em curso' : `${active.length} projetos em curso`;
+      const summary = active.length
+        ? `<p class="portal-summary">${escapeHtml(activeLine)}${completed.length ? ` · ${completed.length} concluído${completed.length === 1 ? '' : 's'}` : ''}</p>`
+        : '';
+
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Os seus projetos</span>
+            <h1>Olá, ${escapeHtml(firstName)}</h1>
+            <p class="lede">Acompanhe o progresso do seu projeto, comente nos cartões e descarregue os ficheiros partilhados pelo estúdio.</p>
+          </div>
         </div>
-      </div>
-      ${projects.length === 0
-        ? '<div class="empty">Ainda não tem projetos. O estúdio criará um em breve.</div>'
-        : `<table class="table">
-            <thead><tr><th>Projeto</th><th>Estado</th><th>Atualizado</th><th class="row-actions"></th></tr></thead>
-            <tbody>${projects.map(p => `
-              <tr>
-                <td class="name"><a href="/portal/projeto.html?id=${encodeURIComponent(p.id)}">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
-                <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
-                <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
-                <td class="row-actions"><a class="btn sm primary" href="/portal/projeto.html?id=${encodeURIComponent(p.id)}">Abrir ›</a></td>
-              </tr>
-            `).join('')}</tbody>
-          </table>`}
-    `;
+        ${summary}
+        ${projects.length === 0
+          ? '<div class="empty"><div class="empty-title">Sem projetos por agora</div><div class="empty-sub">Quando o estúdio iniciar um projeto para si, ele aparece aqui.</div></div>'
+          : `<div class="portal-cards">
+              ${active.map(card).join('')}
+              ${completed.length ? `
+                <h2 class="portal-section">Concluídos</h2>
+                ${completed.map(card).join('')}
+              ` : ''}
+            </div>`}
+      `;
+    }
+
+    safeRender(loading, render);
   </script>
 </body>
 </html>

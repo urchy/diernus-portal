@@ -946,3 +946,76 @@ h2 {
   border-radius: 6px; padding: 2rem 1rem; text-align: center;
   color: var(--graphite-60); font-style: italic;
 }
+
+/* ==========================================================================
+   PORTAL — client-side "My projects" page (list of project cards)
+   Distinct from the admin tables: each project is a card, not a row, so
+   a 1-5 project list still feels personal and not like a database view.
+   ========================================================================== */
+.portal-summary {
+  font-family: var(--mono); font-size: .72rem; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--graphite-60);
+  margin: -.4rem 0 1.4rem;
+}
+.portal-section {
+  font-family: var(--mono); font-size: .62rem; letter-spacing: .18em;
+  text-transform: uppercase; color: var(--graphite-60);
+  margin: 1.4rem 0 .6rem; font-weight: 500;
+}
+.portal-cards { display: flex; flex-direction: column; gap: .7rem; }
+.portal-card {
+  display: grid;
+  grid-template-columns: minmax(120px, max-content) 1fr max-content;
+  gap: 1.4rem; align-items: center;
+  padding: 1.1rem 1.4rem;
+  background: #fff; border: 1px solid var(--graphite-15);
+  border-left: 4px solid var(--cobalt);
+  border-radius: 8px;
+  text-decoration: none; color: inherit;
+  transition: border-color .15s, transform .15s, box-shadow .15s;
+}
+@media (max-width: 720px) {
+  .portal-card {
+    grid-template-columns: 1fr;
+    gap: .6rem;
+  }
+  .portal-card-status { justify-self: start; }
+  .portal-card-cta { justify-self: start; }
+}
+.portal-card:hover {
+  border-color: var(--graphite-35);
+  box-shadow: 0 6px 18px -10px rgba(0,0,0,.18);
+  text-decoration: none;
+}
+.portal-card:hover .portal-card-arrow { transform: translateX(3px); }
+.portal-card.is-completed { border-left-color: var(--graphite-35); }
+.portal-card.is-completed .portal-card-name { color: var(--graphite-60); }
+.portal-card-status { flex-shrink: 0; }
+.portal-card-body { min-width: 0; }
+.portal-card-name {
+  font-family: var(--display);
+  font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: 1.2rem; line-height: 1.2; margin: 0 0 .25rem;
+  color: var(--graphite); letter-spacing: -.005em;
+}
+.portal-card-desc {
+  font-style: italic; color: var(--graphite-60);
+  font-size: .9rem; margin: 0 0 .4rem; line-height: 1.4;
+}
+.portal-card-meta {
+  display: flex; gap: 1.1rem; flex-wrap: wrap;
+  font-size: .72rem; color: var(--graphite-60);
+}
+.portal-due-stamp    { color: var(--stamp); font-weight: 500; }
+.portal-due-amber    { color: var(--amber); font-weight: 500; }
+.portal-due-graphite { color: var(--graphite-60); }
+.portal-card-cta {
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--cobalt);
+  display: inline-flex; align-items: center; gap: .25rem;
+  white-space: nowrap;
+}
+.portal-card-arrow {
+  display: inline-block; transition: transform .15s ease;
+  font-size: 1rem; line-height: 1;
+}
