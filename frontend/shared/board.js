@@ -154,9 +154,14 @@ function refreshColumnCounts(board) {
 }
 
 async function refresh(board, mountEl, projectId, access) {
-  // re-fetch the board and re-render cards (simpler than patching in place)
+  // re-fetch the board and re-render (simpler than patching in place).
+  // The project page appends its own content (e.g. project files) after
+  // the kanban, so we only strip the elements owned by mountBoard —
+  // the kanban, the page-head, and the summary block. Anything added by
+  // the page (back-link, files section) stays put.
   mountEl.querySelectorAll('.kanban').forEach(n => n.remove());
-  mountEl.querySelector('.board-head')?.remove();
+  mountEl.querySelectorAll('.board-head').forEach(n => n.remove());
+  mountEl.querySelectorAll('.summary').forEach(n => n.remove());
   await mountBoard(mountEl, projectId, access);
   // re-mount handler
   // (handlers re-bind via the new mount; no need to re-attach)
