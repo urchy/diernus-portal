@@ -102,7 +102,7 @@
       ${upcoming.length === 0
         ? '<div class="upcoming-empty">Sem cartões com prazo. Defina datas de entrega nos cartões para os ver aqui.</div>'
         : `<table class="table upcoming-table">
-            <thead><tr><th>Prioridade</th><th>Cartão</th><th>Projeto</th><th>Prazo</th></tr></thead>
+            <thead><tr><th>Prioridade</th><th>Cartão</th><th>Projeto</th><th>Prazo</th><th></th></tr></thead>
             <tbody>${upcoming.map(card => {
               const proj = (b.projects || []).find(p => p.id === card.project_id);
               const [cls, label] = urgencyClass(card.due_date);
@@ -113,6 +113,7 @@
                   <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}" style="color:inherit;text-decoration:none">${escapeHtml(card.title)}</a></td>
                   <td>${escapeHtml(proj ? proj.name : '—')}</td>
                   <td><span class="${cls}" style="font-family:var(--mono);font-size:.78rem">${label}</span></td>
+                  <td class="row-actions"><a class="btn sm ghost" href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}">Abrir ›</a></td>
                 </tr>`;
             }).join('')}</tbody>
           </table>`}

@@ -18,13 +18,28 @@
     import { mountBoard } from '/shared/board.js';
     const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Meus projetos', 'Detalhe'] });
     const id = new URLSearchParams(location.search).get('id');
-    if (!id) { content.innerHTML = '<div class="error">ID em falta.</div>'; }
-    else {
+    if (!id) {
+      content.innerHTML = `
+        <div class="page-head">
+          <div><span class="eyebrow">Meus projetos</span><h1>Detalhe</h1></div>
+        </div>
+        <div class="error">ID em falta — abra o projeto a partir da <a href="/portal/">lista de projetos</a>.</div>`;
+    } else {
       const back = document.createElement('div');
-      back.style.marginBottom = '1rem';
-      back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/portal/">‹ OS MEUS PROJETOS</a>';
+      back.className = 'page-back';
+      back.innerHTML = '<a href="/portal/">‹ Os meus projetos</a>';
       content.appendChild(back);
-      await mountBoard(content, id, 'client');
+      // loading state while we fetch the board
+      const loading = document.createElement('div');
+      loading.className = 'page-loading';
+      loading.innerHTML = '<div class="spinner"></div><span>A carregar projeto…</span>';
+      content.appendChild(loading);
+      try {
+        await mountBoard(content, id, 'client');
+        loading.remove();
+      } catch (e) {
+        loading.innerHTML = `<div class="error">Não foi possível carregar o projeto: ${escapeHtml(e.message || String(e))}<br><br><a class="btn ghost" href="/portal/">‹ Voltar à lista</a></div>`;
+      }
       // Project files section — client can upload too (smaller cap, 25 MB)
       const filesWrap = document.createElement('section');
       filesWrap.className = 'project-files';

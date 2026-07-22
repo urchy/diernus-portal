@@ -118,12 +118,23 @@ clientRoutes.get('/', async (c) => {
               FROM users WHERE role = 'client'
               ORDER BY status = 'active' DESC, name`)
     .all<User>();
-  // count of pending invites per client email (to show "convite pendente" badge)
+  // For each client email, return the *most recent* invitation with its
+  // `accepted_at` + `expires_at`, plus the count of still-pending invites.
+  // The frontend (admin/clientes.html) needs `accepted_at` to decide whether
+  // the most recent invite was actually accepted — using MAX(expires_at) was
+  // wrong because the latest expiry could belong to an invite that was
+  // superseded by a newer (still pending) one.
   const invites = await c.env.DB
-    .prepare(`SELECT email, MAX(created_at) AS last_invite, MAX(expires_at) AS expires_at,
-              SUM(CASE WHEN accepted_at IS NULL AND expires_at > datetime('now') THEN 1 ELSE 0 END) AS pending_count
-              FROM invitations GROUP BY email`)
-    .all<{ email: string; last_invite: string; expires_at: string; pending_count: number }>();
+    .prepare(`SELECT i.email, i.created_at AS last_invite, i.expires_at, i.accepted_at,
+              (SELECT COUNT(*) FROM invitations j
+                 WHERE j.email = i.email
+                   AND j.accepted_at IS NULL
+                   AND j.expires_at > datetime('now')) AS pending_count
+              FROM invitations i
+              WHERE i.id = (SELECT id FROM invitations
+                             WHERE email = i.email
+                             ORDER BY created_at DESC LIMIT 1)`)
+    .all<{ email: string; last_invite: string; expires_at: string; accepted_at: string | null; pending_count: number }>();
   const inviteMap = new Map(invites.results.map(i => [i.email, i]));
   const clients = rows.results.map(u => ({ ...u, invite: inviteMap.get(u.email) || null }));
   return c.json({ clients });

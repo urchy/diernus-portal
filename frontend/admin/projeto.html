@@ -13,19 +13,34 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout } from '/shared/layout.js';
+    import { renderLayout, escapeHtml } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     import { mountBoard } from '/shared/board.js';
     const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Projetos', 'Detalhe'] });
     const id = new URLSearchParams(location.search).get('id');
-    if (!id) { content.innerHTML = '<div class="error">ID em falta.</div>'; }
-    else {
-      // a back-link at the top of the page (since the sidebar nav doesn't carry the id)
+    if (!id) {
+      content.innerHTML = `
+        <div class="page-head">
+          <div><span class="eyebrow">Projetos</span><h1>Detalhe</h1></div>
+        </div>
+        <div class="error">ID em falta — abra o projeto a partir da <a href="/admin/projetos.html">lista de projetos</a>.</div>`;
+    } else {
+      // back-link at the top of the page (the sidebar nav doesn't carry the id)
       const back = document.createElement('div');
-      back.style.marginBottom = '1rem';
-      back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/admin/projetos.html">‹ PROJETOS</a>';
+      back.className = 'page-back';
+      back.innerHTML = '<a href="/admin/projetos.html">‹ Projetos</a>';
       content.appendChild(back);
-      await mountBoard(content, id, 'studio');
+      // show a loading state while we fetch the board
+      const loading = document.createElement('div');
+      loading.className = 'page-loading';
+      loading.innerHTML = '<div class="spinner"></div><span>A carregar projeto…</span>';
+      content.appendChild(loading);
+      try {
+        await mountBoard(content, id, 'studio');
+        loading.remove();
+      } catch (e) {
+        loading.innerHTML = `<div class="error">Não foi possível carregar o projeto: ${escapeHtml(e.message || String(e))}<br><br><a class="btn ghost" href="/admin/projetos.html">‹ Voltar à lista</a></div>`;
+      }
       // Append the project files section (studio only — portal/projeto.html is read-only)
       const filesWrap = document.createElement('section');
       filesWrap.className = 'project-files';

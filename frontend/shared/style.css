@@ -776,6 +776,7 @@ h2 {
   line-height: 1;
 }
 .bell-badge[hidden] { display: none; }  /* override the .bell-badge display:inline-flex so the [hidden] attribute actually hides it */
+.bell-dropdown[hidden] { display: none; }  /* same fix for the dropdown — display:flex would otherwise override [hidden] */
 .bell-dropdown {
   position: absolute; top: calc(100% + .5rem); right: 0;
   width: 380px; max-width: calc(100vw - 2rem);
@@ -836,7 +837,47 @@ h2 {
 /* ==========================================================================
    TABLE ACTIONS — last column with the "Abrir" button on project lists
    ========================================================================== */
+.table { table-layout: auto; }
+.table th, .table td { overflow-wrap: anywhere; word-break: break-word; }
 .table th.row-actions, .table td.row-actions {
   text-align: right; width: 1%; white-space: nowrap; padding-left: 1rem;
 }
 .table td.row-actions .btn { padding: .3rem .7rem; font-size: .72rem; }
+.table tr td.row-actions { padding-right: 1rem; }
+.table tr:hover td.row-actions { background: transparent; }  /* keep action col clean on row hover */
+
+/* ==========================================================================
+   PAGE-LEVEL HELPERS — back link, loading state, inline empty hint
+   ========================================================================== */
+.page-back {
+  margin: 0 0 1rem;
+}
+.page-back a {
+  display: inline-flex; align-items: center; gap: .25rem;
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .14em;
+  text-transform: uppercase; color: var(--graphite-60);
+  text-decoration: none; padding: .25rem 0;
+}
+.page-back a:hover { color: var(--cobalt); text-decoration: none; }
+.page-loading {
+  display: flex; align-items: center; justify-content: center; gap: .7rem;
+  padding: 3rem 1rem; color: var(--graphite-60);
+  font-family: var(--mono); font-size: .8rem; letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.page-loading .spinner { width: 18px; height: 18px; border-width: 2px; }
+
+/* ==========================================================================
+   UPCOMING TASKS — overview "Próximas tarefas" table
+   ========================================================================== */
+.upcoming-table td { vertical-align: middle; }
+.upcoming-table .name a { color: var(--graphite); }
+.upcoming-table .name a:hover { color: var(--cobalt); }
+.upcoming-overdue { color: var(--stamp); }
+.upcoming-soon    { color: var(--amber); }
+.upcoming-future  { color: var(--graphite-60); }
+.upcoming-empty {
+  background: var(--bone-2); border: 1px dashed var(--graphite-35);
+  border-radius: 6px; padding: 2rem 1rem; text-align: center;
+  color: var(--graphite-60); font-style: italic;
+}
