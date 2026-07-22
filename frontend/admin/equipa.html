@@ -33,39 +33,68 @@
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
     async function render() {
-      // we use /api/invites as a proxy for sent team invites
-      // (we also show the studio users list)
       const [team, allUsers] = await Promise.all([
         api.team().catch(() => ({ invitations: [] })),
         api.me(),
       ]);
-      // For now the team page just shows the current user + invitation history.
-      // Phase 2: add a /api/team endpoint.
       const me = allUsers.user;
+      // also fetch active studio members
+      const { members } = await api.teamMembers().catch(() => ({ members: [] }));
       content.innerHTML = `
         <div class="page-head">
           <div>
             <span class="eyebrow">Equipa</span>
             <h1>Membros do estúdio</h1>
-            <p class="lede">Convide colegas para entrar no estúdio e gerir projetos consigo.</p>
+            <p class="lede">Quem está dentro do estúdio e quem está a aguardar convite.</p>
           </div>
           <div class="actions"><button class="btn primary" id="newTeam">+ Convidar membro</button></div>
         </div>
 
-        <h2 style="margin-bottom:.7rem">No estúdio</h2>
-        <table class="table">
-          <thead><tr><th>Nome</th><th>Email</th><th>Último acesso</th></tr></thead>
-          <tbody>
-            <tr>
-              <td class="name">${escapeHtml(me.name)} <span class="status-pill active" style="margin-left:.5rem">tu</span></td>
-              <td><span class="mono" style="font-size:.8rem">${escapeHtml(me.email)}</span></td>
-              <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${me.last_seen_at ? timeAgo(me.last_seen_at) : 'nunca'}</span></td>
-            </tr>
-          </tbody>
-        </table>
-        <p class="lede" style="margin-top:1rem;font-size:.85rem">A lista completa de membros do estúdio será adicionada em breve. Por agora, para adicionar novos membros use "Convidar membro" — o convite é enviado por email e o utilizador aparece aqui quando aceitar.</p>
+        <h2 style="margin-bottom:.7rem">No estúdio (${members.length})</h2>
+        ${members.length === 0
+          ? '<div class="empty">Sem membros ativos.</div>'
+          : `<table class="table">
+              <thead><tr><th>Nome</th><th>Email</th><th>Último acesso</th></tr></thead>
+              <tbody>${members.map(m => `
+                <tr>
+                  <td class="name">${escapeHtml(m.name)}${m.id === me.id ? ' <span class="status-pill active" style="margin-left:.5rem">tu</span>' : ''}</td>
+                  <td><span class="mono" style="font-size:.8rem">${escapeHtml(m.email)}</span></td>
+                  <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${m.last_seen_at ? timeAgo(m.last_seen_at) : 'nunca'}</span></td>
+                </tr>
+              `).join('')}</tbody>
+            </table>`}
+
+        <h2 style="margin:1.6rem 0 .7rem">Convites pendentes</h2>
+        ${(() => {
+          const pending = (team.invitations || []).filter(i => !i.accepted_at && new Date(i.expires_at) > new Date());
+          if (pending.length === 0) return '<div class="empty">Sem convites pendentes.</div>';
+          return `<table class="table">
+            <thead><tr><th>Nome</th><th>Email</th><th>Expira</th><th></th></tr></thead>
+            <tbody>${pending.map(i => `
+              <tr>
+                <td class="name">${escapeHtml(i.name)}</td>
+                <td><span class="mono" style="font-size:.8rem">${escapeHtml(i.email)}</span></td>
+                <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(i.expires_at)}</span></td>
+                <td class="actions"><button class="btn sm ghost" data-resend="${escapeHtml(i.email)}">Reenviar</button></td>
+              </tr>`).join('')}</tbody>
+          </table>`;
+        })()}
       `;
       document.getElementById('newTeam').addEventListener('click', openModal);
+      // resend buttons
+      content.querySelectorAll('button[data-resend]').forEach(b => {
+        b.addEventListener('click', async () => {
+          const email = b.dataset.resend;
+          // we need a name to re-invite; ask for it
+          const name = prompt('Nome completo do membro:', email.split('@')[0]);
+          if (!name) return;
+          try {
+            const r = await api.inviteTeam(email, name);
+            if (r.warning) prompt('Email não enviado — copie este link para enviar manualmente:', r.invitation.accept_url);
+            else alert('Convite reenviado para ' + email);
+          } catch (e) { alert('Erro: ' + e.message); }
+        });
+      });
     }
 
     function openModal() {

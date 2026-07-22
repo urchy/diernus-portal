@@ -196,3 +196,19 @@ export function initials(name) {
 export function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
+
+// showToast — quick bottom-right notice (used by boards, modals, etc.)
+export function showToast(msg) {
+  let el = document.querySelector('.toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'toast';
+    document.body.appendChild(el);
+  }
+  el.textContent = msg;
+  requestAnimationFrame(() => el.classList.add('on'));
+  clearTimeout(showToast._t);
+  showToast._t = setTimeout(() => {
+    el.classList.remove('on');
+  }, 3200);
+}

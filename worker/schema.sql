@@ -48,6 +48,7 @@ CREATE TABLE IF NOT EXISTS projects (
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived')),
   hourly_rate     REAL,                                        -- €/hour agreed with the client
   budget_hours    REAL,                                        -- optional total hours budget
+  due_date        TEXT,                                        -- project-level deadline (date only, ISO yyyy-mm-dd)
   created_by      TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -56,6 +57,11 @@ CREATE TABLE IF NOT EXISTS projects (
 );
 CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
+
+-- migrations for existing DBs (CREATE TABLE doesn't add columns retroactively)
+-- Idempotent: SQLite will fail these if already applied; the schema script
+-- ignores those errors when run with `wrangler d1 execute` --command.
+ALTER TABLE projects ADD COLUMN due_date TEXT;
 
 -- =========================================================================
 -- columns — kanban columns per project (default 3 seeded on project create)

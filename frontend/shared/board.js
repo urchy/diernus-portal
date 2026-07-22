@@ -3,7 +3,7 @@
 // card-detail side panel with comments.
 
 import { api } from './api.js';
-import { $, fmtDate, fmtDateTime, timeAgo, escapeHtml, initials } from './layout.js';
+import { $, fmtDate, fmtDateTime, timeAgo, escapeHtml, initials, showToast } from './layout.js';
 
 const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
 const PRIORITY_COLOR = {
@@ -19,7 +19,7 @@ const PRIORITY_COLOR = {
  * @param access  'studio' | 'client'
  */
 export async function mountBoard(mountEl, projectId, access) {
-  const { project, columns, cards } = await api.board(projectId);
+  const { project, columns, cards, summary } = await api.board(projectId);
   const canEdit = access === 'studio';
 
   // header
@@ -40,6 +40,9 @@ export async function mountBoard(mountEl, projectId, access) {
     </div>
   `;
   mountEl.appendChild(header);
+
+  // summary block
+  if (summary) mountEl.appendChild(buildSummaryHeader(project, summary, canEdit));
 
   // load SortableJS from CDN (only once)
   await loadSortable();
@@ -113,7 +116,7 @@ export async function mountBoard(mountEl, projectId, access) {
     const cardEl = e.target.closest('.kcard');
     if (!cardEl) return;
     e.preventDefault();
-    openCardDetail(cardEl.dataset.cardId, canEdit, () => refresh(board, mountEl, projectId, access));
+    openCardDetail(cardEl.dataset.cardId, canEdit, () => refresh(board, mountEl, projectId, access), projectId);
   });
 
   // "Editar preço/orçamento" button
@@ -210,10 +213,17 @@ export async function openNewCardModal(projectId, columnId, onCreated) {
   });
 }
 
-export async function openCardDetail(cardId, canEdit, onChange) {
+export async function openCardDetail(cardId, canEdit, onChange, projectId) {
   const overlay = document.createElement('div');
   overlay.className = 'card-detail-back on';
   const { card, comments } = await api.card(cardId);
+  // fetch team members + files in parallel (both for studio; client still gets files)
+  const [teamRes, filesRes] = await Promise.all([
+    canEdit ? api.teamMembers().catch(() => ({ members: [] })) : Promise.resolve({ members: [] }),
+    api.cardFiles(projectId || card.project_id, cardId).catch(() => ({ files: [] })),
+  ]);
+  const team = teamRes.members || [];
+  const files = filesRes.files || [];
   overlay.innerHTML = `
     <div class="card-detail">
       <header class="card-detail-head">
@@ -230,6 +240,16 @@ export async function openCardDetail(cardId, canEdit, onChange) {
         </section>
         ${canEdit ? `
         <section class="cd-section">
+          <h3>Atribuído a</h3>
+          <div class="cd-assignee">
+            <select id="assigneeSel" class="cd-assignee-sel">
+              <option value="">— ninguém —</option>
+              ${team.map(m => `<option value="${escapeHtml(m.id)}" ${m.id === card.assignee_id ? 'selected' : ''}>${escapeHtml(m.name)}</option>`).join('')}
+            </select>
+            ${card.assignee_name ? `<span class="cd-assignee-current" title="atribuído a">${initials(card.assignee_name)} ${escapeHtml(card.assignee_name)}</span>` : ''}
+          </div>
+        </section>
+        <section class="cd-section">
           <h3>Estado</h3>
           <div class="row" style="display:flex;gap:.5rem;flex-wrap:wrap">
             <button class="btn sm ghost" data-act="priority" data-value="low">Baixa</button>
@@ -237,7 +257,28 @@ export async function openCardDetail(cardId, canEdit, onChange) {
             <button class="btn sm ghost" data-act="priority" data-value="high">Alta</button>
             <button class="btn sm ghost" data-act="delete" style="color:var(--stamp)">Apagar cartão</button>
           </div>
-        </section>` : ''}
+        </section>` : `
+        ${card.assignee_name ? `
+        <section class="cd-section">
+          <h3>Atribuído a</h3>
+          <div class="cd-assignee"><span class="cd-assignee-current">${initials(card.assignee_name)} ${escapeHtml(card.assignee_name)}</span></div>
+        </section>` : ''}`}
+        <section class="cd-section">
+          <h3>Ficheiros (${files.length})</h3>
+          <div class="cd-files" id="cdFiles">
+            ${files.length === 0
+              ? '<em style="color:var(--graphite-60);font-size:.85rem">Sem ficheiros anexados.</em>'
+              : files.map(f => renderFileRow(f, canEdit)).join('')}
+          </div>
+          ${canEdit ? `
+          <form id="fileForm" class="cd-file-form">
+            <label class="cd-file-drop" id="fileDrop">
+              <input type="file" id="fileInput" hidden>
+              <span>📎 Escolher ficheiro ou largar aqui (máx. 50 MB)</span>
+            </label>
+            <div class="cd-file-status" id="fileStatus" style="display:none"></div>
+          </form>` : ''}
+        </section>
         <section class="cd-section">
           <h3>Comentários (${comments.length})</h3>
           <div class="cd-comments">
@@ -265,6 +306,62 @@ export async function openCardDetail(cardId, canEdit, onChange) {
   document.body.appendChild(overlay);
   overlay.querySelector('#cdClose').addEventListener('click', () => overlay.remove());
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+
+  // assignee change
+  if (canEdit) {
+    const sel = overlay.querySelector('#assigneeSel');
+    if (sel) {
+      sel.addEventListener('change', async () => {
+        const newId = sel.value || null;
+        const restoreSel = sel.value;
+        try {
+          await api.updateCard(cardId, { assignee_id: newId });
+          showToast(newId ? 'Cartão atribuído' : 'Atribuição removida');
+          // close the panel so the user can re-open and see the fresh assignee on the card
+          overlay.remove();
+          onChange();
+        } catch (e) {
+          alert('Não foi possível atribuir: ' + e.message);
+          sel.value = restoreSel;  // revert
+        }
+      });
+    }
+  }
+
+  // file upload + delete
+  if (canEdit) {
+    const fileInput = overlay.querySelector('#fileInput');
+    const fileDrop = overlay.querySelector('#fileDrop');
+    const fileStatus = overlay.querySelector('#fileStatus');
+    const filesContainer = overlay.querySelector('#cdFiles');
+    if (fileInput) {
+      fileDrop.addEventListener('click', () => fileInput.click());
+      fileInput.addEventListener('change', () => {
+        if (fileInput.files?.[0]) uploadAndAppend(fileInput.files[0], projectId || card.project_id, cardId, filesContainer, fileStatus, onChange);
+      });
+      // drag-and-drop
+      ['dragenter','dragover'].forEach(ev => fileDrop.addEventListener(ev, e => { e.preventDefault(); fileDrop.classList.add('on'); }));
+      ['dragleave','drop'].forEach(ev => fileDrop.addEventListener(ev, e => { e.preventDefault(); fileDrop.classList.remove('on'); }));
+      fileDrop.addEventListener('drop', e => {
+        const f = e.dataTransfer?.files?.[0];
+        if (f) uploadAndAppend(f, projectId || card.project_id, cardId, filesContainer, fileStatus, onChange);
+      });
+    }
+  }
+  // file delete (event delegation)
+  overlay.addEventListener('click', async e => {
+    const delBtn = e.target.closest('button[data-file-del]');
+    if (!delBtn) return;
+    const id = delBtn.dataset.fileDel;
+    if (!confirm('Apagar este ficheiro?')) return;
+    try {
+      await api.deleteFile(id);
+      delBtn.closest('.cd-file').remove();
+      showToast('Ficheiro removido');
+    } catch (err) {
+      alert('Não foi possível remover: ' + err.message);
+    }
+  });
 
   // priority buttons
   if (canEdit) {
@@ -310,11 +407,12 @@ async function openEditMetaModal(project, onSaved) {
   overlay.className = 'modal-back on';
   overlay.innerHTML = `
     <div class="modal">
-      <h2>Preço e orçamento</h2>
+      <h2>Projeto · detalhes</h2>
       <div class="error" id="err" style="display:none"></div>
       <form id="form">
         <label class="field"><label>Preço por hora (€)</label><input type="number" name="hourly_rate" step="1" min="0" value="${project.hourly_rate ?? ''}"></label>
         <label class="field"><label>Orçamento total (horas)</label><input type="number" name="budget_hours" step="0.5" min="0" value="${project.budget_hours ?? ''}"></label>
+        <label class="field"><label>Prazo do projeto</label><input type="date" name="due_date" value="${project.due_date ?? ''}"></label>
         <label class="field"><label>Estado</label>
           <select name="status">
             <option value="active"    ${project.status==='active'?'selected':''}>em curso</option>
@@ -341,6 +439,7 @@ async function openEditMetaModal(project, onSaved) {
       await api.updateProject(project.id, {
         hourly_rate: data.get('hourly_rate') ? Number(data.get('hourly_rate')) : null,
         budget_hours: data.get('budget_hours') ? Number(data.get('budget_hours')) : null,
+        due_date: data.get('due_date') || null,
         status: data.get('status'),
       });
       overlay.remove();
@@ -357,6 +456,109 @@ async function openEditMetaModal(project, onSaved) {
 function PRIORITY_BADGE(p) {
   const color = PRIORITY_COLOR[p] || PRIORITY_COLOR.medium;
   return `<span class="cd-pill" style="background:${color.bg};color:${color.fg}">${PRIORITY_LABEL[p] || p}</span>`;
+}
+
+// ---- Summary header (rendered between page-head and the kanban) ----
+function buildSummaryHeader(project, summary, canEdit) {
+  const wrap = document.createElement('section');
+  wrap.className = 'summary';
+  const pct = Math.max(0, Math.min(100, summary.progress_pct || 0));
+  const dueClass = (() => {
+    if (!project.due_date) return '';
+    const d = new Date(project.due_date);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const days = Math.round((d - today) / 86400000);
+    if (days < 0) return 'summary-due summary-due-overdue';
+    if (days <= 7) return 'summary-due summary-due-soon';
+    return 'summary-due';
+  })();
+  const dueLabel = (() => {
+    if (!project.due_date) return 'sem prazo';
+    const d = new Date(project.due_date);
+    const today = new Date(); today.setHours(0,0,0,0);
+    const days = Math.round((d - today) / 86400000);
+    if (days < 0) return `atrasado ${Math.abs(days)}d`;
+    if (days === 0) return 'vence hoje';
+    if (days === 1) return 'vence amanhã';
+    if (days <= 30) return `em ${days}d`;
+    return d.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
+  })();
+  const budgetPct = summary.budget_consumed_pct;
+  const budgetTone = budgetPct == null ? '' : (budgetPct >= 100 ? 'summary-bill-over' : budgetPct >= 80 ? 'summary-bill-warn' : '');
+  wrap.innerHTML = `
+    <div class="summary-card">
+      <div class="summary-label">Progresso</div>
+      <div class="summary-value">${pct}<small>%</small></div>
+      <div class="summary-bar"><div class="summary-bar-fill" style="width:${pct}%"></div></div>
+      <div class="summary-sub">${summary.done} de ${summary.total} cartões concluídos</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Tarefas</div>
+      <div class="summary-value">${summary.total}</div>
+      <div class="summary-sub">${summary.todo} a fazer · ${summary.in_progress} em curso</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Horas</div>
+      <div class="summary-value">${formatHours(summary.total_actual_hours)}<small>h</small></div>
+      <div class="summary-sub">${formatHours(summary.total_estimated_hours)}h estimadas${project.budget_hours != null ? ' · ' + formatHours(project.budget_hours) + 'h orçamento' : ''}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Orçamento</div>
+      <div class="summary-value ${budgetTone}">${budgetPct == null ? '—' : budgetPct + '<small>%</small>'}</div>
+      <div class="summary-sub">${budgetPct == null ? 'sem orçamento definido' : `${formatHours(summary.total_actual_hours)}h / ${formatHours(project.budget_hours)}h`}</div>
+    </div>
+    <div class="summary-card">
+      <div class="summary-label">Prazo</div>
+      <div class="summary-value ${dueClass}">${escapeHtml(dueLabel.split(' ')[0])}</div>
+      <div class="summary-sub">${project.due_date ? new Date(project.due_date).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' }) : 'definir prazo'}${summary.overdue_count > 0 ? ' · ' + summary.overdue_count + ' cartão(ões) atrasado(s)' : ''}</div>
+    </div>
+    ${summary.next_due_card ? `
+    <div class="summary-card summary-next">
+      <div class="summary-label">Próximo a entregar</div>
+      <div class="summary-value-sm">${escapeHtml(summary.next_due_card.title)}</div>
+      <div class="summary-sub">${new Date(summary.next_due_card.due_date).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' })}</div>
+    </div>` : ''}
+  `;
+  return wrap;
+}
+
+// ---- File row in the card detail ----
+function renderFileRow(f, canEdit) {
+  const sizeKB = f.size < 1024 * 1024
+    ? Math.max(1, Math.round(f.size / 1024)) + ' KB'
+    : (f.size / 1024 / 1024).toFixed(1) + ' MB';
+  const ext = (f.filename.split('.').pop() || '?').toLowerCase();
+  return `
+    <div class="cd-file">
+      <span class="cd-file-ext cd-file-ext-${escapeHtml(ext)}">${escapeHtml(ext.slice(0, 4))}</span>
+      <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${escapeHtml(f.filename)}</a>
+      <span class="cd-file-meta">${sizeKB} · ${escapeHtml(f.uploader_name || '')}</span>
+      ${canEdit ? `<button class="cd-file-del" data-file-del="${escapeHtml(f.id)}" title="Apagar">✕</button>` : ''}
+    </div>`;
+}
+
+// ---- Upload handler (called by file input change / drop) ----
+async function uploadAndAppend(file, projectId, cardId, container, status, onChange) {
+  if (status) {
+    status.style.display = '';
+    status.textContent = `A enviar ${file.name}…`;
+  }
+  try {
+    const { file: uploaded } = await api.uploadFile(projectId, file, cardId);
+    if (status) status.textContent = `Enviado: ${uploaded.filename}`;
+    // clear the "no files" placeholder if present
+    const placeholder = container.querySelector('em');
+    if (placeholder) placeholder.remove();
+    // prepend the new row
+    const div = document.createElement('div');
+    div.innerHTML = renderFileRow(uploaded, true);
+    container.prepend(div.firstElementChild);
+    if (onChange) onChange();
+    setTimeout(() => { if (status) status.style.display = 'none'; }, 2500);
+  } catch (err) {
+    if (status) status.textContent = 'Erro: ' + err.message;
+    setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
+  }
 }
 
 function formatHours(h) {

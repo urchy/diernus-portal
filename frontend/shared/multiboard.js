@@ -11,7 +11,7 @@
 //   the full editor for that project.
 
 import { api } from './api.js';
-import { $, escapeHtml, initials, timeAgo } from './layout.js';
+import { $, escapeHtml, initials, timeAgo, showToast } from './layout.js';
 import { openCardDetail, openNewCardModal } from './board.js';
 
 const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
@@ -250,7 +250,7 @@ export async function mountMultiBoard(mountEl) {
       // editable only when focused on the project that owns the card
       const card = cards.find(c => c.id === cardId);
       const canEdit = focused != null && card && card.project_id === focused;
-      openCardDetail(cardId, canEdit, () => refreshAfterMutation());
+      openCardDetail(cardId, canEdit, () => refreshAfterMutation(), card ? card.project_id : null);
     });
   }
 
@@ -308,18 +308,6 @@ export async function mountMultiBoard(mountEl) {
 
   // first render
   renderBoard();
-}
-
-function showToast(msg) {
-  const el = document.createElement('div');
-  el.className = 'toast';
-  el.textContent = msg;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('on'));
-  setTimeout(() => {
-    el.classList.remove('on');
-    setTimeout(() => el.remove(), 300);
-  }, 3200);
 }
 
 function renderCard(card, projects, projectColor, focused) {

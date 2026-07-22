@@ -67,7 +67,7 @@ projectRoutes.patch('/:id', requireRole('studio'), async (c) => {
   if (!existing) return c.json({ error: 'projeto não encontrado' }, 404);
   const body = await c.req.json().catch(() => null) as Partial<Project> | null;
   if (!body) return c.json({ error: 'payload vazio' }, 400);
-  const allowed: (keyof Project)[] = ['name', 'description', 'status', 'hourly_rate', 'budget_hours'];
+  const allowed: (keyof Project)[] = ['name', 'description', 'status', 'hourly_rate', 'budget_hours', 'due_date'];
   const sets: string[] = [];
   const args: any[] = [];
   for (const k of allowed) {

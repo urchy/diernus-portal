@@ -523,3 +523,134 @@ h2 {
 .upcoming-table .upcoming-soon    { color: var(--amber); }
 .upcoming-table .upcoming-future  { color: var(--graphite-60); }
 .upcoming-table .upcoming-empty   { padding: 1.4rem; text-align: center; color: var(--graphite-60); font-style: italic; }
+
+/* ==========================================================================
+   SUMMARY HEADER — project detail page
+   ========================================================================== */
+.summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: .8rem; margin: -.4rem 0 1.4rem;
+}
+.summary-card {
+  background: #fff; border: 1px solid var(--graphite-15);
+  border-radius: 8px; padding: .9rem 1rem;
+  display: flex; flex-direction: column; gap: .25rem;
+  min-height: 110px;
+}
+.summary-label {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--graphite-60);
+}
+.summary-value {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: 1.8rem; line-height: 1; color: var(--graphite);
+}
+.summary-value small {
+  font-size: .9rem; font-weight: 500; color: var(--graphite-60); margin-left: 2px;
+}
+.summary-value-sm {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 700;
+  font-size: 1rem; line-height: 1.2; color: var(--graphite);
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+}
+.summary-sub {
+  font-family: var(--mono); font-size: .65rem; color: var(--graphite-60);
+  margin-top: auto;
+}
+.summary-bar {
+  width: 100%; height: 6px; background: var(--bone-2);
+  border-radius: 999px; overflow: hidden; margin-top: .35rem;
+}
+.summary-bar-fill {
+  height: 100%; background: var(--cobalt);
+  transition: width .3s ease;
+}
+.summary-due-overdue { color: var(--stamp); }
+.summary-due-soon    { color: var(--amber); }
+.summary-bill-warn   { color: var(--amber); }
+.summary-bill-over   { color: var(--stamp); }
+.summary-next { background: var(--cobalt-soft); border-color: var(--cobalt); }
+
+/* ==========================================================================
+   CARD DETAIL — assignee + files
+   ========================================================================== */
+.cd-assignee { display: flex; align-items: center; gap: .6rem; flex-wrap: wrap; }
+.cd-assignee-sel {
+  font-family: var(--body); font-size: .9rem;
+  padding: .4rem .6rem; border: 1px solid var(--graphite-35);
+  border-radius: 4px; background: #fff; min-width: 180px;
+}
+.cd-assignee-current {
+  display: inline-flex; align-items: center; gap: .35rem;
+  font-family: var(--mono); font-size: .72rem; color: var(--graphite-60);
+}
+.cd-assignee-current::before {
+  content: ''; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--cobalt); color: #fff; display: inline-flex;
+  align-items: center; justify-content: center; font-size: .6rem; font-weight: 600;
+}
+.cd-assignee-current {
+  display: none; /* shown only when the select is populated and an option is set */
+}
+.cd-files { display: flex; flex-direction: column; gap: .35rem; margin-bottom: .6rem; }
+.cd-file {
+  display: flex; align-items: center; gap: .55rem;
+  background: var(--bone-2); border: 1px solid var(--graphite-15);
+  border-radius: 5px; padding: .45rem .6rem;
+}
+.cd-file-ext {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .04em;
+  padding: 2px 6px; border-radius: 3px;
+  background: var(--graphite); color: #fff; text-transform: uppercase;
+  flex-shrink: 0; min-width: 36px; text-align: center;
+}
+.cd-file-ext-pdf  { background: #b3232e; }
+.cd-file-ext-jpg, .cd-file-ext-png, .cd-file-ext-webp, .cd-file-ext-svg { background: #2c49c7; }
+.cd-file-ext-ai, .cd-file-ext-psd, .cd-file-ext-skt { background: #c2873a; }
+.cd-file-ext-zip, .cd-file-ext-rar, .cd-file-ext-7z { background: #5b5b5b; }
+.cd-file-name {
+  flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; color: var(--graphite); text-decoration: none;
+  font-size: .9rem;
+}
+.cd-file-name:hover { color: var(--cobalt); }
+.cd-file-meta { font-family: var(--mono); font-size: .62rem; color: var(--graphite-60); }
+.cd-file-del {
+  background: none; border: 0; color: var(--graphite-60);
+  cursor: pointer; font-size: 1rem; padding: 0 .25rem;
+}
+.cd-file-del:hover { color: var(--stamp); }
+.cd-file-drop {
+  display: block; padding: .7rem 1rem; text-align: center;
+  background: var(--bone-2); border: 1px dashed var(--graphite-35);
+  border-radius: 5px; cursor: pointer; font-size: .85rem;
+  color: var(--graphite-60); transition: border-color .15s, background .15s;
+}
+.cd-file-drop:hover, .cd-file-drop.on {
+  border-color: var(--cobalt); background: var(--cobalt-soft);
+  color: var(--cobalt);
+}
+.cd-file-status {
+  margin-top: .4rem; font-family: var(--mono); font-size: .72rem;
+  color: var(--graphite-60);
+}
+
+/* ==========================================================================
+   PROJECT FILES — full section on the project page
+   ========================================================================== */
+.project-files { margin-top: 1.6rem; }
+.project-files-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .7rem;
+}
+.project-files-head h2 {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: 1.1rem; text-transform: uppercase; letter-spacing: .04em;
+  margin: 0;
+}
+.project-files-list { display: flex; flex-direction: column; gap: .35rem; }
+.project-files-empty {
+  padding: 1.4rem; text-align: center; color: var(--graphite-60);
+  background: var(--bone-2); border: 1px dashed var(--graphite-15);
+  border-radius: 6px; font-style: italic;
+}

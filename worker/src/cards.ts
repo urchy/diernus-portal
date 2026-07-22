@@ -109,7 +109,49 @@ cardRoutes.get('/projects/:id/board', async (c) => {
     for (const r of rows.results) commentsByCard[r.card_id] = r.n;
   }
   for (const card of cards.results) card.comment_count = commentsByCard[card.id] || 0;
-  return c.json({ project, columns: cols.results, cards: cards.results, access });
+
+  // ---- Summary block (computed from cards + project meta) ----
+  //   total / done / in_progress / todo          — counts
+  //   total_estimated_hours / total_actual_hours — sums
+  //   progress_pct                              — done / total × 100
+  //   budget_consumed_pct                       — actual / budget × 100
+  //   overdue_count                             — due_date < today AND not in Concluído
+  //   next_due_card                             — soonest due_date (any open card)
+  const total = cards.results.length;
+  let done = 0, inProgress = 0, todo = 0;
+  let totalEst = 0, totalAct = 0;
+  let overdue = 0;
+  let nextDue: any = null;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  for (const card of cards.results) {
+    const col = cols.results.find((k: any) => k.id === card.column_id);
+    const cname = (col?.name || '').toLowerCase();
+    if (cname === 'concluído' || cname === 'concluido') done++;
+    else if (cname === 'em curso') inProgress++;
+    else todo++;
+    totalEst += Number(card.estimated_hours) || 0;
+    totalAct += Number(card.actual_hours) || 0;
+    if (card.due_date && card.due_date < todayIso && cname !== 'concluído' && cname !== 'concluido') overdue++;
+    if (card.due_date && cname !== 'concluído' && cname !== 'concluido') {
+      if (!nextDue || card.due_date < nextDue.due_date) {
+        nextDue = { id: card.id, title: card.title, due_date: card.due_date, priority: card.priority, column_id: card.column_id };
+      }
+    }
+  }
+  const summary = {
+    total,
+    done,
+    in_progress: inProgress,
+    todo,
+    total_estimated_hours: Math.round(totalEst * 10) / 10,
+    total_actual_hours:   Math.round(totalAct * 10) / 10,
+    progress_pct: total > 0 ? Math.round((done / total) * 100) : 0,
+    budget_consumed_pct: project.budget_hours > 0 ? Math.round((totalAct / project.budget_hours) * 100) : null,
+    overdue_count: overdue,
+    next_due_card: nextDue,
+  };
+
+  return c.json({ project, columns: cols.results, cards: cards.results, summary, access });
 });
 
 // POST /api/projects/:id/cards — create a card (studio only)

@@ -20,6 +20,7 @@ export interface Project {
   status: 'active' | 'completed' | 'archived';
   hourly_rate: number | null;
   budget_hours: number | null;
+  due_date: string | null;
   created_by: string;
   created_at: string;
   updated_at: string;

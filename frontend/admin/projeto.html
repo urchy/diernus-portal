@@ -26,6 +26,58 @@
       back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/admin/projetos.html">‹ PROJETOS</a>';
       content.appendChild(back);
       await mountBoard(content, id, 'studio');
+      // Append the project files section (studio only — portal/projeto.html is read-only)
+      const filesWrap = document.createElement('section');
+      filesWrap.className = 'project-files';
+      filesWrap.innerHTML = `
+        <div class="project-files-head">
+          <h2>Ficheiros do projeto</h2>
+          <label class="btn sm ghost" id="projFileDrop" style="cursor:pointer">
+            📎 Enviar ficheiro
+            <input type="file" id="projFileInput" hidden>
+          </label>
+        </div>
+        <div class="project-files-list" id="projFilesList"><em style="color:var(--graphite-60)">A carregar…</em></div>
+      `;
+      content.appendChild(filesWrap);
+      // load files
+      const list = filesWrap.querySelector('#projFilesList');
+      try {
+        const { files } = await api.projectFiles(id);
+        if (files.length === 0) {
+          list.outerHTML = '<div class="project-files-empty">Sem ficheiros. Carregue PDFs, imagens ou 3D para partilhar com o cliente.</div>';
+        } else {
+          list.innerHTML = files.map(f => `
+            <div class="cd-file">
+              <span class="cd-file-ext cd-file-ext-${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}">${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}</span>
+              <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${f.filename}</a>
+              <span class="cd-file-meta">${(f.size < 1048576 ? Math.max(1, Math.round(f.size/1024)) + ' KB' : (f.size/1048576).toFixed(1) + ' MB')} · ${f.uploader_name || ''}</span>
+              <button class="cd-file-del" data-file-del="${f.id}" title="Apagar">✕</button>
+            </div>`).join('');
+        }
+      } catch (e) {
+        list.innerHTML = '<div class="error">' + e.message + '</div>';
+      }
+      // upload
+      const inp = filesWrap.querySelector('#projFileInput');
+      const drop = filesWrap.querySelector('#projFileDrop');
+      drop.addEventListener('click', () => inp.click());
+      inp.addEventListener('change', async () => {
+        if (inp.files?.[0]) {
+          try {
+            await api.uploadFile(id, inp.files[0]);
+            location.reload();
+          } catch (e) { alert('Erro: ' + e.message); }
+        }
+      });
+      // delete (event delegation)
+      filesWrap.addEventListener('click', async e => {
+        const b = e.target.closest('button[data-file-del]');
+        if (!b) return;
+        if (!confirm('Apagar este ficheiro?')) return;
+        try { await api.deleteFile(b.dataset.fileDel); b.closest('.cd-file').remove(); }
+        catch (err) { alert('Erro: ' + err.message); }
+      });
     }
   </script>
 </body>

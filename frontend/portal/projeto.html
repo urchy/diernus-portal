@@ -14,8 +14,9 @@
   <main id="app"></main>
   <script type="module">
     import { renderLayout } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
     import { mountBoard } from '/shared/board.js';
-    const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Os meus projetos', 'Detalhe'] });
+    const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Meus projetos', 'Detalhe'] });
     const id = new URLSearchParams(location.search).get('id');
     if (!id) { content.innerHTML = '<div class="error">ID em falta.</div>'; }
     else {
@@ -24,6 +25,32 @@
       back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/portal/">‹ OS MEUS PROJETOS</a>';
       content.appendChild(back);
       await mountBoard(content, id, 'client');
+      // read-only project files list
+      const filesWrap = document.createElement('section');
+      filesWrap.className = 'project-files';
+      filesWrap.innerHTML = `
+        <div class="project-files-head">
+          <h2>Ficheiros do projeto</h2>
+        </div>
+        <div class="project-files-list" id="projFilesList"><em style="color:var(--graphite-60)">A carregar…</em></div>
+      `;
+      content.appendChild(filesWrap);
+      const list = filesWrap.querySelector('#projFilesList');
+      try {
+        const { files } = await api.projectFiles(id);
+        if (files.length === 0) {
+          list.outerHTML = '<div class="project-files-empty">O estúdio ainda não partilhou ficheiros.</div>';
+        } else {
+          list.innerHTML = files.map(f => `
+            <div class="cd-file">
+              <span class="cd-file-ext cd-file-ext-${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}">${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}</span>
+              <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${f.filename}</a>
+              <span class="cd-file-meta">${(f.size < 1048576 ? Math.max(1, Math.round(f.size/1024)) + ' KB' : (f.size/1048576).toFixed(1) + ' MB')} · ${f.uploader_name || ''}</span>
+            </div>`).join('');
+        }
+      } catch (e) {
+        list.innerHTML = '<div class="error">' + e.message + '</div>';
+      }
     }
   </script>
 </body>

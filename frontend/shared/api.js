@@ -71,4 +71,35 @@ export const api = {
   comments: (cardId) => request('/api/cards/' + encodeURIComponent(cardId) + '/comments'),
   addComment: (cardId, body) =>
     request('/api/cards/' + encodeURIComponent(cardId) + '/comments', { method: 'POST', body: { body } }),
+
+  // Team (assignable studio members)
+  teamMembers: () => request('/api/team/members'),
+
+  // Files
+  projectFiles: (projectId) =>
+    request('/api/projects/' + encodeURIComponent(projectId) + '/files'),
+  cardFiles: (projectId, cardId) =>
+    request('/api/projects/' + encodeURIComponent(projectId) + '/files?card_id=' + encodeURIComponent(cardId)),
+  uploadFile: async (projectId, file, cardId) => {
+    const fd = new FormData();
+    fd.append('file', file);
+    if (cardId) fd.append('card_id', cardId);
+    const res = await fetch(API_BASE + '/api/projects/' + encodeURIComponent(projectId) + '/files', {
+      method: 'POST',
+      body: fd,
+      credentials: 'include',
+    });
+    const ct = res.headers.get('content-type') || '';
+    const data = ct.includes('application/json') ? await res.json().catch(() => null) : await res.text();
+    if (!res.ok) {
+      const err = new Error((data && data.error) || `HTTP ${res.status}`);
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  },
+  deleteFile: (fileId) =>
+    request('/api/files/' + encodeURIComponent(fileId), { method: 'DELETE' }),
+  fileDownloadUrl: (fileId) => API_BASE + '/api/files/' + encodeURIComponent(fileId),
 };
