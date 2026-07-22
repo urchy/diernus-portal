@@ -752,3 +752,83 @@ h2 {
 @media (max-width: 900px) {
   .fin-two-col { grid-template-columns: 1fr; }
 }
+
+/* ==========================================================================
+   NOTIFICATION BELL — topbar dropdown
+   ========================================================================== */
+.topbar-bell { position: relative; }
+.bell-btn {
+  position: relative;
+  background: none; border: 0; cursor: pointer;
+  width: 34px; height: 34px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 6px; color: var(--graphite); padding: 0;
+}
+.bell-btn:hover { background: var(--bone-2); }
+.bell-btn .icon { width: 18px; height: 18px; }
+.bell-badge {
+  position: absolute; top: 2px; right: 2px;
+  min-width: 17px; height: 17px; padding: 0 5px;
+  background: var(--stamp); color: #fff;
+  font-family: var(--mono); font-size: .6rem; font-weight: 600;
+  border-radius: 999px; display: inline-flex; align-items: center; justify-content: center;
+  border: 2px solid var(--bone);
+  line-height: 1;
+}
+.bell-badge[hidden] { display: none; }  /* override the .bell-badge display:inline-flex so the [hidden] attribute actually hides it */
+.bell-dropdown {
+  position: absolute; top: calc(100% + .5rem); right: 0;
+  width: 380px; max-width: calc(100vw - 2rem);
+  background: #fff; border: 1px solid var(--graphite-15);
+  border-radius: 8px; box-shadow: 0 8px 24px -8px rgba(0,0,0,.25);
+  z-index: 100; max-height: 70vh; display: flex; flex-direction: column;
+}
+.bell-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .7rem 1rem; border-bottom: 1px solid var(--graphite-15);
+  flex-shrink: 0;
+}
+.bell-head h3 {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: .9rem; text-transform: uppercase; letter-spacing: .08em;
+  margin: 0; color: var(--graphite);
+}
+.bell-list { overflow-y: auto; }
+.bell-item {
+  display: block; position: relative;
+  padding: .7rem 2rem .7rem 1rem;
+  border-bottom: 1px solid var(--graphite-15);
+  text-decoration: none; color: var(--graphite);
+  font-size: .88rem; line-height: 1.4;
+  transition: background .1s;
+}
+.bell-item:last-child { border-bottom: 0; }
+.bell-item:hover { background: var(--bone-2); }
+.bell-item.unread { background: var(--cobalt-soft); }
+.bell-item.unread:hover { background: #d8e1f5; }
+.bell-item-head {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: .25rem;
+}
+.bell-item-type {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .08em;
+  text-transform: uppercase; padding: 1px 6px; border-radius: 3px;
+  background: var(--graphite-15); color: var(--graphite);
+}
+.bell-type-client_comment { background: var(--cobalt-soft); color: var(--cobalt); }
+.bell-type-client_file    { background: rgba(194,135,58,.18); color: var(--amber); }
+.bell-item-time {
+  font-family: var(--mono); font-size: .62rem; color: var(--graphite-60);
+}
+.bell-item-msg {
+  font-size: .85rem; color: var(--graphite);
+  overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
+  -webkit-line-clamp: 3; -webkit-box-orient: vertical;
+}
+.bell-item-dismiss {
+  position: absolute; top: .5rem; right: .5rem;
+  background: none; border: 0; color: var(--graphite-60);
+  cursor: pointer; font-size: .85rem; padding: 2px 6px;
+  border-radius: 3px; line-height: 1;
+}
+.bell-item-dismiss:hover { background: var(--graphite-08); color: var(--stamp); }

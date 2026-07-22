@@ -94,6 +94,13 @@ export const api = {
     return request('/api/finance/summary' + (qs ? '?' + qs : ''));
   },
 
+  // Notifications (in-app bell)
+  notifications: () => request('/api/notifications'),
+  unreadCount: () => request('/api/notifications/unread-count'),
+  markAllRead: () => request('/api/notifications/mark-all-read', { method: 'POST' }),
+  markRead: (id) => request('/api/notifications/mark-read/' + encodeURIComponent(id), { method: 'POST' }),
+  dismissNotification: (id) => request('/api/notifications/' + encodeURIComponent(id), { method: 'DELETE' }),
+
   // Files
   projectFiles: (projectId) =>
     request('/api/projects/' + encodeURIComponent(projectId) + '/files'),

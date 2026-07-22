@@ -303,14 +303,13 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
               ? '<em style="color:var(--graphite-60);font-size:.85rem">Sem ficheiros anexados.</em>'
               : files.map(f => renderFileRow(f, canEdit)).join('')}
           </div>
-          ${canEdit ? `
           <form id="fileForm" class="cd-file-form">
             <label class="cd-file-drop" id="fileDrop">
               <input type="file" id="fileInput" hidden>
-              <span>📎 Escolher ficheiro ou largar aqui (máx. 50 MB)</span>
+              <span>📎 Escolher ficheiro ou largar aqui (máx. ${canEdit ? 50 : 25} MB)${canEdit ? '' : ' — o estúdio será notificado'}</span>
             </label>
             <div class="cd-file-status" id="fileStatus" style="display:none"></div>
-          </form>` : ''}
+          </form>
         </section>
         <section class="cd-section">
           <h3>Comentários (${comments.length})</h3>
@@ -447,8 +446,8 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
     } catch (err) { alert('Erro: ' + err.message); }
   });
 
-  // file upload + delete
-  if (canEdit) {
+  // file upload — both studio and client can upload
+  {
     const fileInput = overlay.querySelector('#fileInput');
     const fileDrop = overlay.querySelector('#fileDrop');
     const fileStatus = overlay.querySelector('#fileStatus');
@@ -467,27 +466,29 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
       });
     }
   }
-  // file delete (event delegation)
-  overlay.addEventListener('click', async e => {
-    const delBtn = e.target.closest('button[data-file-del]');
-    if (!delBtn) return;
-    const id = delBtn.dataset.fileDel;
-    if (!confirm('Apagar este ficheiro?')) return;
-    try {
-      await api.deleteFile(id);
-      const row = delBtn.closest('.cd-file');
-      row.remove();
-      // update the section heading (Ficheiros (n))
-      const list = overlay.querySelector('#cdFiles');
-      if (list && !list.children.length) {
-        list.innerHTML = '<em style="color:var(--graphite-60);font-size:.85rem">Sem ficheiros anexados.</em>';
+  // file delete — studio only (clients see download-only file rows; renderFileRow already hides the ✕)
+  if (canEdit) {
+    overlay.addEventListener('click', async e => {
+      const delBtn = e.target.closest('button[data-file-del]');
+      if (!delBtn) return;
+      const id = delBtn.dataset.fileDel;
+      if (!confirm('Apagar este ficheiro?')) return;
+      try {
+        await api.deleteFile(id);
+        const row = delBtn.closest('.cd-file');
+        row.remove();
+        // update the section heading (Ficheiros (n))
+        const list = overlay.querySelector('#cdFiles');
+        if (list && !list.children.length) {
+          list.innerHTML = '<em style="color:var(--graphite-60);font-size:.85rem">Sem ficheiros anexados.</em>';
+        }
+        updateFilesHeading(overlay, files.length);
+        showToast('Ficheiro removido');
+      } catch (err) {
+        alert('Não foi possível remover: ' + err.message);
       }
-      updateFilesHeading(overlay, files.length);
-      showToast('Ficheiro removido');
-    } catch (err) {
-      alert('Não foi possível remover: ' + err.message);
-    }
-  });
+    });
+  }
 
   // priority buttons
   if (canEdit) {

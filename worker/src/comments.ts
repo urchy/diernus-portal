@@ -1,8 +1,11 @@
-// Comments — both studio and client can post on cards in their projects
+// Comments — both studio and client can post on cards in their projects.
+// When a client comments, fire a notification to the studio so the
+// bell lights up in their topbar.
 import { Hono } from 'hono';
 import type { AppVariables, Env, User } from './types.js';
 import { requireAuth } from './middleware.js';
 import { uuid } from './crypto.js';
+import { notifyStudio } from './notifications.js';
 
 export const commentRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -53,5 +56,29 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
               FROM comments cm JOIN users u ON u.id = cm.user_id WHERE cm.id = ?`)
     .bind(id)
     .first<any>();
+
+  // If a client just commented, ping the studio so the bell lights up.
+  if (me.role === 'client') {
+    // fetch the card title + project id for a meaningful message
+    const ctx = await c.env.DB
+      .prepare(`SELECT c.title AS card_title, c.project_id, p.name AS project_name
+                FROM cards c JOIN projects p ON p.id = c.project_id
+                WHERE c.id = ?`)
+      .bind(c.req.param('cardId'))
+      .first<{ card_title: string; project_id: string; project_name: string }>();
+    if (ctx) {
+      const snippet = body.body.trim().length > 80
+        ? body.body.trim().slice(0, 77) + '…'
+        : body.body.trim();
+      await notifyStudio(c.env, {
+        type: 'client_comment',
+        refKind: 'card',
+        refId: c.req.param('cardId'),
+        actor: me,
+        message: `${me.name} comentou em "${ctx.card_title}" (${ctx.project_name}): "${snippet}"`,
+        link: `/admin/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`,
+      });
+    }
+  }
   return c.json({ comment }, 201);
 });

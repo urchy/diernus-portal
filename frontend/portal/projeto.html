@@ -13,7 +13,7 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout } from '/shared/layout.js';
+    import { renderLayout, escapeHtml } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     import { mountBoard } from '/shared/board.js';
     const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Meus projetos', 'Detalhe'] });
@@ -25,32 +25,64 @@
       back.innerHTML = '<a class="mono" style="color:var(--graphite-60);text-decoration:none;font-size:.7rem;letter-spacing:.14em" href="/portal/">‹ OS MEUS PROJETOS</a>';
       content.appendChild(back);
       await mountBoard(content, id, 'client');
-      // read-only project files list
+      // Project files section — client can upload too (smaller cap, 25 MB)
       const filesWrap = document.createElement('section');
       filesWrap.className = 'project-files';
       filesWrap.innerHTML = `
         <div class="project-files-head">
           <h2>Ficheiros do projeto</h2>
+          <label class="btn sm ghost" id="projFileDrop" style="cursor:pointer">
+            📎 Enviar ficheiro
+            <input type="file" id="projFileInput" hidden>
+          </label>
         </div>
         <div class="project-files-list" id="projFilesList"><em style="color:var(--graphite-60)">A carregar…</em></div>
+        <div class="cd-file-status" id="projFileStatus" style="display:none;margin-top:.4rem"></div>
       `;
       content.appendChild(filesWrap);
       const list = filesWrap.querySelector('#projFilesList');
-      try {
-        const { files } = await api.projectFiles(id);
-        if (files.length === 0) {
-          list.outerHTML = '<div class="project-files-empty">O estúdio ainda não partilhou ficheiros.</div>';
-        } else {
-          list.innerHTML = files.map(f => `
-            <div class="cd-file">
-              <span class="cd-file-ext cd-file-ext-${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}">${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}</span>
-              <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${f.filename}</a>
-              <span class="cd-file-meta">${(f.size < 1048576 ? Math.max(1, Math.round(f.size/1024)) + ' KB' : (f.size/1048576).toFixed(1) + ' MB')} · ${f.uploader_name || ''}</span>
-            </div>`).join('');
+      const status = filesWrap.querySelector('#projFileStatus');
+      async function loadFiles() {
+        try {
+          const { files } = await api.projectFiles(id);
+          if (files.length === 0) {
+            list.innerHTML = '<div class="project-files-empty">Ainda não há ficheiros partilhados.</div>';
+          } else {
+            list.innerHTML = files.map(f => `
+              <div class="cd-file">
+                <span class="cd-file-ext cd-file-ext-${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}">${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}</span>
+                <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${escapeHtml(f.filename)}</a>
+                <span class="cd-file-meta">${(f.size < 1048576 ? Math.max(1, Math.round(f.size/1024)) + ' KB' : (f.size/1048576).toFixed(1) + ' MB')} · ${escapeHtml(f.uploader_name || '')}</span>
+              </div>`).join('');
+          }
+        } catch (e) {
+          list.innerHTML = '<div class="error">' + e.message + '</div>';
         }
-      } catch (e) {
-        list.innerHTML = '<div class="error">' + e.message + '</div>';
       }
+      await loadFiles();
+
+      // upload
+      const inp = filesWrap.querySelector('#projFileInput');
+      const drop = filesWrap.querySelector('#projFileDrop');
+      drop.addEventListener('click', () => inp.click());
+      inp.addEventListener('change', async () => {
+        if (!inp.files?.[0]) return;
+        const f = inp.files[0];
+        if (f.size > 25 * 1024 * 1024) {
+          status.style.display = ''; status.textContent = 'Ficheiro demasiado grande (máx. 25 MB).';
+          return;
+        }
+        status.style.display = ''; status.textContent = `A enviar ${f.name}…`;
+        try {
+          await api.uploadFile(id, f);
+          status.textContent = 'Enviado. O estúdio foi notificado.';
+          inp.value = '';
+          await loadFiles();
+          setTimeout(() => { status.style.display = 'none'; }, 3000);
+        } catch (e) {
+          status.textContent = 'Erro: ' + e.message;
+        }
+      });
     }
   </script>
 </body>

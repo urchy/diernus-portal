@@ -136,6 +136,31 @@ CREATE INDEX IF NOT EXISTS idx_time_entries_user  ON time_entries(user_id, logge
 CREATE INDEX IF NOT EXISTS idx_time_entries_logged ON time_entries(logged_at);
 
 -- =========================================================================
+-- notifications — in-app bell for the studio
+-- Populated when a client posts a comment or uploads a file, so the
+-- studio can react. One row per recipient (so a client action notifies
+-- every active studio user). ref_kind + ref_id let the UI link straight
+-- back to the card / project.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS notifications (
+  id              TEXT PRIMARY KEY,
+  user_id         TEXT NOT NULL,                              -- studio recipient
+  type            TEXT NOT NULL,                              -- 'client_comment' | 'client_file' (extensible)
+  ref_kind        TEXT NOT NULL,                              -- 'card' | 'project'
+  ref_id          TEXT NOT NULL,                              -- card_id or project_id
+  actor_id        TEXT,                                       -- who triggered it (the client)
+  actor_name      TEXT,                                       -- cached for fast list rendering
+  message         TEXT NOT NULL,                              -- human-readable summary
+  link            TEXT NOT NULL,                              -- relative path to jump to
+  is_read         INTEGER NOT NULL DEFAULT 0,                 -- 0/1 (SQLite has no bool)
+  created_at      TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id)   REFERENCES users(id)    ON DELETE CASCADE,
+  FOREIGN KEY (actor_id)  REFERENCES users(id)    ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_user   ON notifications(user_id, is_read, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, created_at) WHERE is_read = 0;
+
+-- =========================================================================
 -- files — uploaded documents (studio uploads, both download)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS files (

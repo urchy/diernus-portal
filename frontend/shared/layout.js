@@ -11,6 +11,7 @@ const ICON = {
   team:     '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><path d="M2 14c0-2 1.6-3.5 4-3.5M14 14c0-2-1.6-3.5-4-3.5"/></svg>',
   finance:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12M3 10l3-3 3 2 4-5M11 4h2v2"/></svg>',
   invites:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M2 4l6 5 6-5"/></svg>',
+  bell:     '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 12h9M5 12V8a3 3 0 016 0v4M8 4V3M5 5L4 4M11 5l1-1"/></svg>',
   logout:   '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6"/></svg>',
 };
 
@@ -96,6 +97,8 @@ export async function renderLayout({ active, crumbs = [] }) {
   // build topbar
   const topbar = document.createElement('header');
   topbar.className = 'topbar';
+  // Only studio users get the notification bell — clients don't receive
+  // studio notifications, so the bell would always be empty for them.
   topbar.innerHTML = `
     <div class="crumbs">
       ${crumbs.map((c, i) => i < crumbs.length - 1
@@ -104,6 +107,22 @@ export async function renderLayout({ active, crumbs = [] }) {
     </div>
     <span class="spacer"></span>
     <span class="env-pill">${isStudio ? 'estúdio' : 'cliente'}</span>
+    ${isStudio ? `
+    <div class="topbar-bell" id="topbarBell">
+      <button class="bell-btn" id="bellBtn" title="Notificações" aria-label="Notificações">
+        ${ICON.bell}
+        <span class="bell-badge" id="bellBadge" hidden>0</span>
+      </button>
+      <div class="bell-dropdown" id="bellDropdown" hidden>
+        <div class="bell-head">
+          <h3>Notificações</h3>
+          <button class="btn sm ghost" id="bellMarkAll">Marcar tudo lido</button>
+        </div>
+        <div class="bell-list" id="bellList">
+          <em style="color:var(--graphite-60);font-size:.85rem;padding:.7rem">A carregar…</em>
+        </div>
+      </div>
+    </div>` : ''}
     <span class="user-chip">${escapeHtml(me.name)}</span>
   `;
 
@@ -146,6 +165,130 @@ export async function renderLayout({ active, crumbs = [] }) {
     logoutBtn.addEventListener('click', async () => {
       await api.logout();
       location.replace('/login.html');
+    });
+  }
+
+  // wire the notification bell (studio only — the markup is gated above)
+  const bellBtn = document.getElementById('bellBtn');
+  const bellDropdown = document.getElementById('bellDropdown');
+  const bellBadge = document.getElementById('bellBadge');
+  const bellList = document.getElementById('bellList');
+  const bellMarkAll = document.getElementById('bellMarkAll');
+  let bellPollHandle = null;
+  let bellOpen = false;
+
+  function setBadge(n) {
+    if (!bellBadge) return;
+    if (n > 0) {
+      bellBadge.textContent = n > 99 ? '99+' : String(n);
+      bellBadge.hidden = false;
+    } else {
+      bellBadge.hidden = true;
+    }
+  }
+
+  function renderBellList(notifications) {
+    if (!bellList) return;
+    if (!notifications || notifications.length === 0) {
+      bellList.innerHTML = '<em style="color:var(--graphite-60);font-size:.85rem;padding:.7rem;display:block;text-align:center">Sem notificações.</em>';
+      return;
+    }
+    bellList.innerHTML = notifications.map(n => `
+      <a class="bell-item ${n.is_read ? '' : 'unread'}" href="${escapeHtml(n.link)}" data-notif-id="${escapeHtml(n.id)}">
+        <div class="bell-item-head">
+          <span class="bell-item-type bell-type-${escapeHtml(n.type)}">${n.type === 'client_comment' ? '💬 Comentário' : '📎 Ficheiro'}</span>
+          <span class="bell-item-time">${timeAgo(n.created_at)}</span>
+        </div>
+        <div class="bell-item-msg">${escapeHtml(n.message)}</div>
+        <button class="bell-item-dismiss" data-dismiss="${escapeHtml(n.id)}" title="Dispensar">✕</button>
+      </a>
+    `).join('');
+    bellList.querySelectorAll('[data-dismiss]').forEach(btn => {
+      btn.addEventListener('click', async e => {
+        e.preventDefault();
+        e.stopPropagation();
+        await api.dismissNotification(btn.dataset.dismiss);
+        const row = btn.closest('.bell-item');
+        if (row) row.remove();
+        // refresh the badge count
+        refreshUnread();
+      });
+    });
+    bellList.querySelectorAll('.bell-item').forEach(a => {
+      a.addEventListener('click', async () => {
+        if (!a.classList.contains('unread')) return;
+        await api.markRead(a.dataset.notifId);
+        a.classList.remove('unread');
+        refreshUnread();
+      });
+    });
+  }
+
+  async function refreshUnread() {
+    try {
+      const { unread_count } = await api.unreadCount();
+      setBadge(unread_count);
+    } catch (e) { /* silent */ }
+  }
+
+  async function refreshBellList() {
+    if (!bellList) return;
+    try {
+      const { notifications } = await api.notifications();
+      renderBellList(notifications);
+    } catch (e) { /* silent */ }
+  }
+
+  if (bellBtn && bellDropdown) {
+    bellBtn.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      bellOpen = !bellOpen;
+      bellDropdown.hidden = !bellOpen;
+      if (bellOpen) {
+        await refreshBellList();
+        // focus the first item for keyboard nav
+        const first = bellList?.querySelector('.bell-item');
+        if (first) first.focus();
+      }
+    });
+    // click outside closes
+    document.addEventListener('click', e => {
+      if (!bellOpen) return;
+      if (e.target.closest('#topbarBell')) return;
+      bellOpen = false;
+      bellDropdown.hidden = true;
+    });
+    // Esc closes
+    document.addEventListener('keydown', e => {
+      if (bellOpen && e.key === 'Escape') {
+        bellOpen = false;
+        bellDropdown.hidden = true;
+        bellBtn.focus();
+      }
+    });
+  }
+
+  if (bellMarkAll) {
+    bellMarkAll.addEventListener('click', async () => {
+      await api.markAllRead();
+      await refreshBellList();
+      await refreshUnread();
+    });
+  }
+
+  // initial badge + start polling every 30s (only if the bell exists)
+  if (bellBadge) {
+    refreshUnread();
+    bellPollHandle = setInterval(refreshUnread, 30000);
+    // pause polling when the tab is hidden, resume on focus
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) {
+        clearInterval(bellPollHandle);
+        bellPollHandle = null;
+      } else if (!bellPollHandle) {
+        refreshUnread();
+        bellPollHandle = setInterval(refreshUnread, 30000);
+      }
     });
   }
 

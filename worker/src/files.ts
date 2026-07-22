@@ -1,14 +1,18 @@
-// Files — uploaded to R2, attached to projects (and optionally to cards)
-// Studio uploads + downloads; clients can download (and upload in the future).
+// Files — uploaded to R2, attached to projects (and optionally to cards).
+// Both studio and client can upload (studio up to 50 MB, clients up to
+// 25 MB to keep the bucket tidy). When a client uploads, the studio
+// gets a notification so the bell lights up.
 import { Hono } from 'hono';
 import type { AppVariables, Env, FileRecord, User } from './types.js';
 import { requireAuth } from './middleware.js';
 import { uuid } from './crypto.js';
+import { notifyStudio } from './notifications.js';
 
 export const fileRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 fileRoutes.use('*', requireAuth);
 
-const MAX_UPLOAD_MB = 50;
+const MAX_UPLOAD_MB_STUDIO = 50;
+const MAX_UPLOAD_MB_CLIENT = 25;
 const ALLOWED_MIME = null; // null = allow anything within size limit
 
 async function assertProjectAccess(c: { get: (k: string) => unknown; env: Env }, projectId: string): Promise<'studio' | 'client' | null> {
@@ -46,11 +50,10 @@ fileRoutes.get('/projects/:id/files', async (c) => {
 
 // POST /api/projects/:id/files — upload a file (multipart/form-data)
 //   form fields: 'file' (required), 'card_id' (optional)
+//   Both studio and client can upload; sizes are capped differently.
 fileRoutes.post('/projects/:id/files', async (c) => {
   const access = await assertProjectAccess(c, c.req.param('id'));
   if (!access) return c.json({ error: 'não encontrado' }, 404);
-  // Only studio uploads for now; clients can download
-  if (access !== 'studio') return c.json({ error: 'apenas o estúdio pode enviar ficheiros' }, 403);
 
   const me = c.get('user') as User;
   const form = await c.req.formData().catch(() => null);
@@ -60,10 +63,11 @@ fileRoutes.post('/projects/:id/files', async (c) => {
   const cardIdRaw = form.get('card_id');
   const cardId = typeof cardIdRaw === 'string' && cardIdRaw.trim() ? cardIdRaw.trim() : null;
 
-  // size cap
-  const maxBytes = MAX_UPLOAD_MB * 1024 * 1024;
+  // size cap (studio gets 50 MB, clients 25 MB)
+  const maxMb = me.role === 'studio' ? MAX_UPLOAD_MB_STUDIO : MAX_UPLOAD_MB_CLIENT;
+  const maxBytes = maxMb * 1024 * 1024;
   if (file.size > maxBytes) {
-    return c.json({ error: `ficheiro demasiado grande (máx. ${MAX_UPLOAD_MB} MB)` }, 400);
+    return c.json({ error: `ficheiro demasiado grande (máx. ${maxMb} MB)` }, 400);
   }
   // optional mime guard
   if (ALLOWED_MIME && !ALLOWED_MIME.includes(file.type)) {
@@ -97,6 +101,23 @@ fileRoutes.post('/projects/:id/files', async (c) => {
     .prepare('SELECT * FROM files WHERE id = ?')
     .bind(id)
     .first<FileRecord>();
+
+  // If a client just uploaded, ping the studio.
+  if (me.role === 'client') {
+    const ctx = await c.env.DB
+      .prepare(`SELECT name FROM projects WHERE id = ?`)
+      .bind(c.req.param('id'))
+      .first<{ name: string }>();
+    const where = cardId ? ' (no cartão)' : '';
+    await notifyStudio(c.env, {
+      type: 'client_file',
+      refKind: 'project',
+      refId: c.req.param('id'),
+      actor: me,
+      message: `${me.name} enviou "${safeName}" para "${ctx?.name || 'o projeto'}"${where}.`,
+      link: `/admin/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`,
+    });
+  }
   return c.json({ file: record }, 201);
 });
 

@@ -13,6 +13,7 @@ import { fileRoutes } from './files.js';
 import { teamRoutes } from './team.js';
 import { timeRoutes } from './time.js';
 import { financeRoutes } from './finance.js';
+import { notificationRoutes } from './notifications.js';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -44,6 +45,7 @@ app.route('/api/invites', inviteRoutes);
 app.route('/api/team', teamRoutes);
 app.route('/api/clients', clientRoutes);
 app.route('/api/finance', financeRoutes);
+app.route('/api/notifications', notificationRoutes);
 app.route('/api', cardRoutes);       // /api/projects/:id/board, /api/cards/:id, etc.
 app.route('/api', commentRoutes);    // /api/cards/:cardId/comments
 app.route('/api', fileRoutes);       // /api/projects/:id/files, /api/files/:id
