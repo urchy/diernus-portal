@@ -889,6 +889,11 @@ h2 {
                                        showing a stray line in the action col */
 }
 .table thead th.row-actions { border-bottom-color: var(--graphite-15); }
+/* Empty action header (e.g. "<th class='row-actions'></th>") collapses to
+   just the padding because there's no content, so the cell looks shorter
+   than the other th cells and the bone-2 header background is barely
+   visible. Pad it to match the line-height of the other th cells. */
+.table thead th.row-actions:empty::before { content: '\00a0'; }
 .table td.row-actions .btn { padding: .3rem .7rem; font-size: .72rem; }
 .table tr td.row-actions { padding-right: 1rem; }
 .table tr:hover td.row-actions { background: transparent; }  /* keep action col clean on row hover */
@@ -898,6 +903,13 @@ h2 {
    if they really want a primary button in a row. */
 .table .row-actions .btn { background: transparent; color: var(--graphite); border-color: var(--graphite-35); }
 .table .row-actions .btn:hover { border-color: var(--graphite); color: var(--graphite); }
+
+/* Project / client name links in tables: keep the title graphite, not the
+   default cobalt link color. The button in the action column is the
+   primary affordance, not the title. */
+.table .name a { color: var(--graphite); text-decoration: none; }
+.table .name a:hover { color: var(--cobalt); text-decoration: none; }
+.table .name small { color: var(--graphite-60); display: block; font-weight: 400; font-size: .8rem; }
 
 /* ==========================================================================
    PAGE-LEVEL HELPERS — back link, loading state, inline empty hint
