@@ -218,12 +218,14 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
   overlay.className = 'card-detail-back on';
   const { card, comments } = await api.card(cardId);
   // fetch team members + files in parallel (both for studio; client still gets files)
-  const [teamRes, filesRes] = await Promise.all([
+  const [teamRes, filesRes, timeRes] = await Promise.all([
     canEdit ? api.teamMembers().catch(() => ({ members: [] })) : Promise.resolve({ members: [] }),
     api.cardFiles(projectId || card.project_id, cardId).catch(() => ({ files: [] })),
+    canEdit ? api.timeEntries(cardId).catch(() => ({ entries: [] })) : Promise.resolve({ entries: [] }),
   ]);
   const team = teamRes.members || [];
   const files = filesRes.files || [];
+  const timeEntries = timeRes.entries || [];
   overlay.innerHTML = `
     <div class="card-detail">
       <header class="card-detail-head">
@@ -257,7 +259,33 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
             <button class="btn sm ghost" data-act="priority" data-value="high">Alta</button>
             <button class="btn sm ghost" data-act="delete" style="color:var(--stamp)">Apagar cartão</button>
           </div>
-        </section>` : `
+        </section>
+        ${canEdit ? `
+        <section class="cd-section">
+          <h3>Horas gastas <span class="cd-section-aside">${formatHours(card.actual_hours)} h${card.estimated_hours ? ` / ${formatHours(card.estimated_hours)} h estimadas` : ''}</span></h3>
+          <form id="timeForm" class="cd-time-form">
+            <input type="number" name="hours" step="0.25" min="0.25" max="24" placeholder="0.5" required>
+            <input type="text" name="note" placeholder="o que foi feito (opcional)" maxlength="500">
+            <button type="submit" class="btn primary sm">+ Registar</button>
+          </form>
+          <div class="cd-time-entries" id="timeEntries">
+            ${timeEntries.length === 0
+              ? '<em style="color:var(--graphite-60);font-size:.85rem">Sem horas registadas.</em>'
+              : timeEntries.map(e => `
+                <div class="cd-time-row" data-entry-id="${escapeHtml(e.id)}">
+                  <span class="cd-time-h">${formatHours(e.hours)}h</span>
+                  <span class="cd-time-note">${escapeHtml(e.note || '')}</span>
+                  <span class="cd-time-meta">${escapeHtml(e.user_name)} · ${timeAgo(e.logged_at)}</span>
+                  <button class="cd-time-del" data-time-del="${escapeHtml(e.id)}" title="Apagar">✕</button>
+                </div>
+              `).join('')}
+          </div>
+        </section>` : card.actual_hours ? `
+        <section class="cd-section">
+          <h3>Horas gastas</h3>
+          <div style="font-family:var(--mono);font-size:.85rem">${formatHours(card.actual_hours)} h${card.estimated_hours ? ` (estimado: ${formatHours(card.estimated_hours)} h)` : ''}</div>
+        </section>` : ''}
+        ` : `
         ${card.assignee_name ? `
         <section class="cd-section">
           <h3>Atribuído a</h3>
@@ -327,6 +355,44 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
       });
     }
   }
+
+  // time entry form
+  if (canEdit) {
+    const timeForm = overlay.querySelector('#timeForm');
+    if (timeForm) {
+      timeForm.addEventListener('submit', async e => {
+        e.preventDefault();
+        const fd = new FormData(timeForm);
+        const hours = Number(fd.get('hours'));
+        const note = (fd.get('note') || '').toString();
+        if (!Number.isFinite(hours) || hours <= 0) return;
+        const submit = timeForm.querySelector('button[type=submit]');
+        submit.disabled = true; submit.textContent = 'A registar…';
+        try {
+          const { entry } = await api.logHours(cardId, hours, note);
+          showToast(`+${formatHours(entry.hours)}h registadas`);
+          timeForm.reset();
+          // close and re-open to refresh (or just refresh in place)
+          overlay.remove();
+          onChange();
+        } catch (err) {
+          alert('Não foi possível registar: ' + err.message);
+          submit.disabled = false; submit.textContent = '+ Registar';
+        }
+      });
+    }
+  }
+  // time entry delete (event delegation)
+  overlay.addEventListener('click', async e => {
+    const delBtn = e.target.closest('button[data-time-del]');
+    if (!delBtn) return;
+    if (!confirm('Apagar este registo de horas? O total do cartão será atualizado.')) return;
+    try {
+      await api.deleteTimeEntry(delBtn.dataset.timeDel);
+      delBtn.closest('.cd-time-row').remove();
+      showToast('Registo removido');
+    } catch (err) { alert('Erro: ' + err.message); }
+  });
 
   // file upload + delete
   if (canEdit) {

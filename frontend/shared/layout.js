@@ -9,6 +9,7 @@ const ICON = {
   board:    '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="3" height="12" rx=".5"/><rect x="6.5" y="2" width="3" height="8" rx=".5"/><rect x="11" y="2" width="3" height="5" rx=".5"/></svg>',
   clients:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/></svg>',
   team:     '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><path d="M2 14c0-2 1.6-3.5 4-3.5M14 14c0-2-1.6-3.5-4-3.5"/></svg>',
+  finance:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12M3 10l3-3 3 2 4-5M11 4h2v2"/></svg>',
   invites:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M2 4l6 5 6-5"/></svg>',
   logout:   '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6"/></svg>',
 };
@@ -23,6 +24,7 @@ const NAV = {
       { key: 'projects',  label: 'Projetos',    href: '/admin/projetos.html' },
       { key: 'clients',   label: 'Clientes',    href: '/admin/clientes.html' },
       { key: 'team',      label: 'Equipa',      href: '/admin/equipa.html' },
+      { key: 'finance',   label: 'Finanças',    href: '/admin/financas.html' },
     ]},
     { group: 'COMUNICAÇÃO', items: [
       { key: 'invites',   label: 'Convites',    href: '/admin/convites.html' },

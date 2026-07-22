@@ -11,6 +11,8 @@ import { cardRoutes } from './cards.js';
 import { commentRoutes } from './comments.js';
 import { fileRoutes } from './files.js';
 import { teamRoutes } from './team.js';
+import { timeRoutes } from './time.js';
+import { financeRoutes } from './finance.js';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -41,9 +43,11 @@ app.route('/api/projects', projectRoutes);
 app.route('/api/invites', inviteRoutes);
 app.route('/api/team', teamRoutes);
 app.route('/api/clients', clientRoutes);
+app.route('/api/finance', financeRoutes);
 app.route('/api', cardRoutes);       // /api/projects/:id/board, /api/cards/:id, etc.
 app.route('/api', commentRoutes);    // /api/cards/:cardId/comments
 app.route('/api', fileRoutes);       // /api/projects/:id/files, /api/files/:id
+app.route('/api', timeRoutes);       // /api/cards/:id/time-entries, /api/time-entries/:id
 
 app.notFound((c) => c.json({ error: 'not found', path: c.req.path }, 404));
 app.onError((err, c) => {

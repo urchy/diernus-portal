@@ -117,6 +117,25 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id, created_at);
 
 -- =========================================================================
+-- time_entries — hours logged against a card (studio only)
+-- Each row is an "I spent X hours on this card" entry; cards.actual_hours
+-- is the cached sum of all entries for that card.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS time_entries (
+  id              TEXT PRIMARY KEY,
+  card_id         TEXT NOT NULL,
+  user_id         TEXT NOT NULL,
+  hours           REAL NOT NULL CHECK (hours > 0),
+  note            TEXT,
+  logged_at       TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (card_id) REFERENCES cards(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_time_entries_card  ON time_entries(card_id, logged_at);
+CREATE INDEX IF NOT EXISTS idx_time_entries_user  ON time_entries(user_id, logged_at);
+CREATE INDEX IF NOT EXISTS idx_time_entries_logged ON time_entries(logged_at);
+
+-- =========================================================================
 -- files — uploaded documents (studio uploads, both download)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS files (

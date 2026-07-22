@@ -75,6 +75,25 @@ export const api = {
   // Team (assignable studio members)
   teamMembers: () => request('/api/team/members'),
 
+  // Time entries (log hours against a card; studio only)
+  timeEntries: (cardId) =>
+    request('/api/cards/' + encodeURIComponent(cardId) + '/time-entries'),
+  logHours: (cardId, hours, note) =>
+    request('/api/cards/' + encodeURIComponent(cardId) + '/time-entries', {
+      method: 'POST', body: { hours, note: note || undefined },
+    }),
+  deleteTimeEntry: (id) =>
+    request('/api/time-entries/' + encodeURIComponent(id), { method: 'DELETE' }),
+
+  // Finance summary (studio only)
+  financeSummary: (year, month) => {
+    const q = new URLSearchParams();
+    if (year) q.set('year', String(year));
+    if (month) q.set('month', String(month));
+    const qs = q.toString();
+    return request('/api/finance/summary' + (qs ? '?' + qs : ''));
+  },
+
   // Files
   projectFiles: (projectId) =>
     request('/api/projects/' + encodeURIComponent(projectId) + '/files'),

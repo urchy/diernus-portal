@@ -654,3 +654,101 @@ h2 {
   background: var(--bone-2); border: 1px dashed var(--graphite-15);
   border-radius: 6px; font-style: italic;
 }
+
+/* ==========================================================================
+   CARD DETAIL — time entries
+   ========================================================================== */
+.cd-section-aside {
+  float: right; font-family: var(--mono); font-size: .7rem;
+  color: var(--graphite-60); font-weight: 400; letter-spacing: 0;
+  text-transform: none;
+}
+.cd-time-form {
+  display: flex; gap: .4rem; align-items: stretch; margin-bottom: .6rem;
+}
+.cd-time-form input[type="number"] {
+  width: 80px; flex-shrink: 0;
+  font-family: var(--mono); font-size: .9rem;
+  padding: .4rem .55rem; border: 1px solid var(--graphite-35); border-radius: 4px;
+  background: #fff;
+}
+.cd-time-form input[type="text"] {
+  flex: 1; min-width: 0;
+  font-family: var(--body); font-size: .9rem;
+  padding: .4rem .55rem; border: 1px solid var(--graphite-35); border-radius: 4px;
+  background: #fff;
+}
+.cd-time-form input:focus { outline: none; border-color: var(--cobalt); }
+.cd-time-entries { display: flex; flex-direction: column; gap: .3rem; }
+.cd-time-row {
+  display: grid; grid-template-columns: 60px 1fr auto 18px;
+  gap: .55rem; align-items: center;
+  background: var(--bone-2); border: 1px solid var(--graphite-15);
+  border-radius: 5px; padding: .35rem .55rem;
+  font-size: .88rem;
+}
+.cd-time-h { font-family: var(--mono); font-weight: 600; color: var(--cobalt); }
+.cd-time-note { color: var(--graphite); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cd-time-meta { font-family: var(--mono); font-size: .62rem; color: var(--graphite-60); }
+.cd-time-del {
+  background: none; border: 0; color: var(--graphite-60);
+  cursor: pointer; font-size: .9rem; padding: 0;
+}
+.cd-time-del:hover { color: var(--stamp); }
+
+/* ==========================================================================
+   FINANCE DASHBOARD
+   ========================================================================== */
+.fin-sel {
+  font-family: var(--mono); font-size: .75rem;
+  padding: .35rem .6rem; border: 1px solid var(--graphite-35);
+  border-radius: 4px; background: #fff; color: var(--graphite);
+  text-transform: uppercase; letter-spacing: .06em;
+}
+.fin-stats {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: .8rem; margin-bottom: 1.6rem;
+}
+.fin-stat {
+  background: #fff; border: 1px solid var(--graphite-15);
+  border-radius: 8px; padding: 1rem 1.1rem;
+  display: flex; flex-direction: column; gap: .25rem; min-height: 110px;
+}
+.fin-stat-label {
+  font-family: var(--mono); font-size: .6rem; letter-spacing: .12em;
+  text-transform: uppercase; color: var(--graphite-60);
+}
+.fin-stat-value {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: 1.9rem; line-height: 1; color: var(--graphite);
+}
+.fin-stat-value small { font-size: 1rem; font-weight: 500; color: var(--graphite-60); margin-left: 2px; }
+.fin-stat-sub { font-family: var(--mono); font-size: .65rem; color: var(--graphite-60); margin-top: auto; }
+
+.fin-chart {
+  background: #fff; border: 1px solid var(--graphite-15);
+  border-radius: 8px; padding: 1rem 1.1rem .8rem; margin-bottom: .5rem;
+}
+.fin-chart h2 {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 700;
+  font-size: .9rem; text-transform: uppercase; letter-spacing: .08em;
+  margin: 0 0 .7rem; color: var(--graphite-60);
+}
+.fin-chart svg { display: block; max-width: 100%; }
+.fin-chart-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  font-family: var(--mono); font-size: .75rem; color: var(--graphite-60);
+  margin-top: .4rem; padding-top: .4rem; border-top: 1px dashed var(--graphite-15);
+}
+.fin-chart-foot b { color: var(--graphite); font-weight: 600; }
+
+.fin-table th.num, .fin-table td.num { text-align: right; }
+.fin-table .fin-bill-warn { color: var(--amber); font-weight: 500; }
+.fin-table .fin-bill-over  { color: var(--stamp); font-weight: 600; }
+
+.fin-two-col {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1.4rem; align-items: start;
+}
+@media (max-width: 900px) {
+  .fin-two-col { grid-template-columns: 1fr; }
+}

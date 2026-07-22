@@ -1,0 +1,217 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Finanças · Diernus Admin</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    import { renderLayout } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { content } = await renderLayout({ active: 'finance', crumbs: ['Finanças'] });
+
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function eur(n) {
+      if (n == null) return '—';
+      return Number(n).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 });
+    }
+    function eur1(n) {
+      if (n == null) return '—';
+      return Number(n).toLocaleString('pt-PT', { style: 'currency', currency: 'EUR', maximumFractionDigits: 1 });
+    }
+
+    const now = new Date();
+    let year = now.getFullYear();
+    let month = null; // null = whole year
+
+    async function load() {
+      const data = await api.financeSummary(year, month);
+      render(data);
+    }
+
+    function render(d) {
+      const t = d.totals;
+      const monthLabel = d.period.month
+        ? new Date(d.period.year, d.period.month - 1, 1).toLocaleDateString('pt-PT', { month: 'long', year: 'numeric' })
+        : `${d.period.year}`;
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Finanças</span>
+            <h1>${escapeHtml(monthLabel)}</h1>
+            <p class="lede">Horas gastas, faturação estimada e progresso por projeto, cliente e pessoa da equipa.</p>
+          </div>
+          <div class="actions">
+            <select id="yearSel" class="fin-sel">
+              ${[year - 1, year, year + 1].map(y => `<option value="${y}" ${y === year ? 'selected' : ''}>${y}</option>`).join('')}
+            </select>
+            <select id="monthSel" class="fin-sel">
+              <option value="" ${month == null ? 'selected' : ''}>ano inteiro</option>
+              ${['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez']
+                .map((n, i) => `<option value="${i + 1}" ${month === i + 1 ? 'selected' : ''}>${n}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+
+        <div class="fin-stats">
+          <div class="fin-stat">
+            <div class="fin-stat-label">Faturado no período</div>
+            <div class="fin-stat-value">${eur(d.period.month ? t.period_billed : t.all_time_billed)}</div>
+            <div class="fin-stat-sub">${d.period.month ? `este mês · ${formatHours(t.period_hours)}h` : `projetos ativos · ${formatHours(t.all_time_hours)}h totais`}</div>
+          </div>
+          <div class="fin-stat">
+            <div class="fin-stat-label">Horas no período</div>
+            <div class="fin-stat-value">${formatHours(d.period.month ? t.period_hours : t.all_time_hours)}<small>h</small></div>
+            <div class="fin-stat-sub">${d.period.month ? `este mês` : `desde o início`}</div>
+          </div>
+          <div class="fin-stat">
+            <div class="fin-stat-label">Projetos</div>
+            <div class="fin-stat-value">${t.projects}</div>
+            <div class="fin-stat-sub">${t.active_projects} ativos · ${t.completed_projects} concluídos</div>
+          </div>
+          <div class="fin-stat">
+            <div class="fin-stat-label">Clientes</div>
+            <div class="fin-stat-value">${t.clients}</div>
+            <div class="fin-stat-sub">com projetos no estúdio</div>
+          </div>
+        </div>
+
+        ${!d.period.month ? renderMonthlyChart(d.monthly) : ''}
+
+        <h2 style="margin:1.6rem 0 .7rem">Por projeto</h2>
+        ${renderProjectTable(d.projects)}
+
+        <div class="fin-two-col">
+          <div>
+            <h2 style="margin:1.6rem 0 .7rem">Por cliente</h2>
+            ${renderClientTable(d.clients)}
+          </div>
+          <div>
+            <h2 style="margin:1.6rem 0 .7rem">Por pessoa da equipa</h2>
+            ${renderTeamTable(d.team, d.period)}
+          </div>
+        </div>
+      `;
+      document.getElementById('yearSel').addEventListener('change', e => { year = Number(e.target.value); load(); });
+      document.getElementById('monthSel').addEventListener('change', e => { month = e.target.value ? Number(e.target.value) : null; load(); });
+    }
+
+    function renderMonthlyChart(months) {
+      const max = Math.max(0.1, ...months.map(m => m.hours));
+      const W = 700, H = 180, barW = (W - 40) / 12;
+      const bars = months.map((m, i) => {
+        const h = (m.hours / max) * (H - 40);
+        const x = 20 + i * barW;
+        const y = H - 20 - h;
+        const fill = m.hours > 0 ? 'var(--cobalt)' : 'var(--graphite-15)';
+        return `
+          <g>
+            <rect x="${x + 4}" y="${y}" width="${barW - 8}" height="${h}" rx="3" fill="${fill}"></rect>
+            <text x="${x + barW/2}" y="${H - 6}" text-anchor="middle" font-size="10" fill="var(--graphite-60)" font-family="var(--mono)">${m.name}</text>
+            <text x="${x + barW/2}" y="${y - 4}" text-anchor="middle" font-size="10" fill="var(--graphite)" font-family="var(--mono)">${m.hours > 0 ? m.hours + 'h' : ''}</text>
+          </g>
+        `;
+      }).join('');
+      const totalH = months.reduce((s, m) => s + m.hours, 0);
+      const totalB = months.reduce((s, m) => s + m.billed, 0);
+      return `
+        <section class="fin-chart">
+          <h2>Visão mensal</h2>
+          <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="Horas por mês">
+            ${bars}
+          </svg>
+          <div class="fin-chart-foot">
+            <span>Total ${year}: <b>${formatHours(totalH)} h</b></span>
+            <span>Faturação estimada: <b>${eur1(totalB)}</b></span>
+          </div>
+        </section>
+      `;
+    }
+
+    function renderProjectTable(projects) {
+      if (projects.length === 0) return '<div class="empty">Sem projetos.</div>';
+      return `<table class="table fin-table">
+        <thead><tr>
+          <th>Projeto</th><th>Cliente</th><th>Estado</th>
+          <th class="num">€/h</th>
+          <th class="num">Orçamento</th>
+          <th class="num">Estimado</th>
+          <th class="num">Gasto</th>
+          <th class="num">Faturado</th>
+          <th class="num">% orç.</th>
+        </tr></thead>
+        <tbody>${projects.map(p => {
+          const pctTone = p.budget_used_pct == null ? '' :
+            p.budget_used_pct >= 100 ? 'fin-bill-over' :
+            p.budget_used_pct >= 80  ? 'fin-bill-warn' : '';
+          return `
+            <tr>
+              <td class="name"><a href="/admin/projeto.html?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.name)}</a></td>
+              <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.72rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
+              <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
+              <td class="num mono">${p.hourly_rate != null ? p.hourly_rate.toFixed(0) + ' €' : '—'}</td>
+              <td class="num mono">${p.budget_hours != null ? formatHours(p.budget_hours) + ' h' : '—'}</td>
+              <td class="num mono">${formatHours(p.estimated_hours)} h</td>
+              <td class="num mono">${formatHours(p.actual_hours)} h</td>
+              <td class="num mono">${eur(p.billed_total)}</td>
+              <td class="num mono ${pctTone}">${p.budget_used_pct == null ? '—' : p.budget_used_pct + '%'}</td>
+            </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }
+
+    function renderClientTable(clients) {
+      if (clients.length === 0) return '<div class="empty">Sem clientes.</div>';
+      return `<table class="table fin-table">
+        <thead><tr>
+          <th>Cliente</th>
+          <th class="num">Projetos</th>
+          <th class="num">Horas</th>
+          <th class="num">Faturado</th>
+        </tr></thead>
+        <tbody>${clients.map(c => `
+          <tr>
+            <td class="name">${escapeHtml(c.name)}<br><span class="mono" style="font-size:.72rem;color:var(--graphite-60)">${escapeHtml(c.email)}</span></td>
+            <td class="num mono">${c.project_count}</td>
+            <td class="num mono">${formatHours(c.actual_hours)} h</td>
+            <td class="num mono">${eur(c.billed_total)}</td>
+          </tr>`).join('')}</tbody>
+      </table>`;
+    }
+
+    function renderTeamTable(team, period) {
+      if (team.length === 0) return `<div class="empty">Sem horas registadas ${period.month ? 'este mês' : 'este ano'}. Peça à equipa para usar "Registar horas" nos cartões.</div>`;
+      return `<table class="table fin-table">
+        <thead><tr>
+          <th>Pessoa</th>
+          <th class="num">Horas no período</th>
+          <th class="num">Registos</th>
+          <th class="num">Total acumulado</th>
+        </tr></thead>
+        <tbody>${team.map(m => `
+          <tr>
+            <td class="name">${escapeHtml(m.name)}<br><span class="mono" style="font-size:.72rem;color:var(--graphite-60)">${escapeHtml(m.email)}</span></td>
+            <td class="num mono">${formatHours(m.period_hours)} h</td>
+            <td class="num mono">${m.entry_count}</td>
+            <td class="num mono">${formatHours(m.all_time_hours)} h</td>
+          </tr>`).join('')}</tbody>
+      </table>`;
+    }
+
+    function formatHours(h) {
+      if (h == null) return '';
+      if (Number.isInteger(h)) return String(h);
+      return h.toFixed(1).replace(/\.0$/, '');
+    }
+
+    load();
+  </script>
+</body>
+</html>
