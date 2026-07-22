@@ -347,11 +347,32 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
       sel.addEventListener('change', async () => {
         const newId = sel.value || null;
         const restoreSel = sel.value;
+        const member = team.find(m => m.id === newId);
         try {
           await api.updateCard(cardId, { assignee_id: newId });
-          showToast(newId ? 'Cartão atribuído' : 'Atribuição removida');
-          // close the panel so the user can re-open and see the fresh assignee on the card
-          overlay.remove();
+          // update local state
+          card.assignee_id = newId;
+          card.assignee_name = member ? member.name : null;
+          // update the "X initials Name" pill next to the dropdown
+          const cur = overlay.querySelector('.cd-assignee-current');
+          if (cur) {
+            if (member) {
+              cur.textContent = member.name;
+              cur.style.display = '';
+            } else {
+              cur.remove();
+            }
+          } else if (member) {
+            // re-render the cd-assignee row to include the current pill
+            const row = overlay.querySelector('.cd-assignee');
+            if (row) {
+              const span = document.createElement('span');
+              span.className = 'cd-assignee-current';
+              span.textContent = member.name;
+              row.appendChild(span);
+            }
+          }
+          showToast(newId ? `Atribuído a ${member.name}` : 'Atribuição removida');
           onChange();
         } catch (e) {
           alert('Não foi possível atribuir: ' + e.message);
@@ -375,10 +396,26 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
         submit.disabled = true; submit.textContent = 'A registar…';
         try {
           const { entry } = await api.logHours(cardId, hours, note);
-          showToast(`+${formatHours(entry.hours)}h registadas`);
+          // update the in-panel state without closing it
+          const list = overlay.querySelector('#timeEntries');
+          // remove the "Sem horas registadas." placeholder if present
+          const placeholder = list.querySelector('em');
+          if (placeholder) placeholder.remove();
+          // prepend the new row
+          const row = document.createElement('div');
+          row.innerHTML = renderTimeEntryRow(entry);
+          list.prepend(row.firstElementChild);
+          // refresh the aside (e.g. "0.3 h / 1 h estimadas")
+          const newActual = (card.actual_hours || 0) + entry.hours;
+          card.actual_hours = newActual;
+          updateHoursAside(overlay, card);
+          updateCardHeaderPills(overlay, card);
+          // reset the form, keep the panel open
           timeForm.reset();
-          // close and re-open to refresh (or just refresh in place)
-          overlay.remove();
+          submit.disabled = false; submit.textContent = '+ Registar';
+          timeForm.querySelector('input[name="hours"]')?.focus();
+          showToast(`+${formatHours(entry.hours)}h registadas`);
+          // background-refresh the board so the card on the board shows the new actual_hours
           onChange();
         } catch (err) {
           alert('Não foi possível registar: ' + err.message);
@@ -393,9 +430,20 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
     if (!delBtn) return;
     if (!confirm('Apagar este registo de horas? O total do cartão será atualizado.')) return;
     try {
+      const row = delBtn.closest('.cd-time-row');
+      const hours = Number(row?.dataset.hours || 0);
       await api.deleteTimeEntry(delBtn.dataset.timeDel);
-      delBtn.closest('.cd-time-row').remove();
+      row.remove();
+      card.actual_hours = Math.max(0, (card.actual_hours || 0) - hours);
+      updateHoursAside(overlay, card);
+      updateCardHeaderPills(overlay, card);
+      // if no entries left, show the placeholder back
+      const list = overlay.querySelector('#timeEntries');
+      if (list && !list.children.length) {
+        list.innerHTML = '<em style="color:var(--graphite-60);font-size:.85rem">Sem horas registadas.</em>';
+      }
       showToast('Registo removido');
+      onChange();
     } catch (err) { alert('Erro: ' + err.message); }
   });
 
@@ -408,14 +456,14 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
     if (fileInput) {
       fileDrop.addEventListener('click', () => fileInput.click());
       fileInput.addEventListener('change', () => {
-        if (fileInput.files?.[0]) uploadAndAppend(fileInput.files[0], projectId || card.project_id, cardId, filesContainer, fileStatus, onChange);
+        if (fileInput.files?.[0]) uploadAndAppend(fileInput.files[0], projectId || card.project_id, cardId, filesContainer, fileStatus, onChange, overlay);
       });
       // drag-and-drop
       ['dragenter','dragover'].forEach(ev => fileDrop.addEventListener(ev, e => { e.preventDefault(); fileDrop.classList.add('on'); }));
       ['dragleave','drop'].forEach(ev => fileDrop.addEventListener(ev, e => { e.preventDefault(); fileDrop.classList.remove('on'); }));
       fileDrop.addEventListener('drop', e => {
         const f = e.dataTransfer?.files?.[0];
-        if (f) uploadAndAppend(f, projectId || card.project_id, cardId, filesContainer, fileStatus, onChange);
+        if (f) uploadAndAppend(f, projectId || card.project_id, cardId, filesContainer, fileStatus, onChange, overlay);
       });
     }
   }
@@ -427,7 +475,14 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
     if (!confirm('Apagar este ficheiro?')) return;
     try {
       await api.deleteFile(id);
-      delBtn.closest('.cd-file').remove();
+      const row = delBtn.closest('.cd-file');
+      row.remove();
+      // update the section heading (Ficheiros (n))
+      const list = overlay.querySelector('#cdFiles');
+      if (list && !list.children.length) {
+        list.innerHTML = '<em style="color:var(--graphite-60);font-size:.85rem">Sem ficheiros anexados.</em>';
+      }
+      updateFilesHeading(overlay, files.length);
       showToast('Ficheiro removido');
     } catch (err) {
       alert('Não foi possível remover: ' + err.message);
@@ -442,7 +497,9 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
       if (btn.dataset.act === 'priority') {
         try {
           await api.updateCard(cardId, { priority: btn.dataset.value });
-          overlay.remove();
+          card.priority = btn.dataset.value;
+          updateCardHeaderPills(overlay, card);
+          showToast('Prioridade atualizada');
           onChange();
         } catch (err) { alert(err.message); }
       } else if (btn.dataset.act === 'delete') {
@@ -463,8 +520,23 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
     const submit = overlay.querySelector('#cmtSubmit');
     submit.disabled = true; submit.textContent = 'A enviar…';
     try {
-      await api.addComment(cardId, body);
-      overlay.remove();
+      const { comment } = await api.addComment(cardId, body);
+      // update the in-panel state without closing it
+      const list = overlay.querySelector('.cd-comments');
+      if (list) {
+        const placeholder = list.querySelector('em');
+        if (placeholder) placeholder.remove();
+        const row = document.createElement('div');
+        row.innerHTML = renderCommentRow(comment);
+        list.appendChild(row.firstElementChild);
+      }
+      // update the section header (Comentários (n))
+      updateSectionHeading(overlay, 'Comentários', `Comentários (${list.querySelectorAll('.cd-comment').length})`);
+      // reset the form, focus the textarea so the user can keep adding notes
+      e.target.reset();
+      submit.disabled = false; submit.textContent = canEdit ? 'Enviar comentário' : 'Comentar';
+      const ta = e.target.querySelector('textarea');
+      if (ta) ta.focus();
       onChange();
     } catch (err) {
       alert(err.message);
@@ -608,8 +680,77 @@ function renderFileRow(f, canEdit) {
     </div>`;
 }
 
+// ---- Per-card panel helpers (used by openCardDetail's in-place updates) ----
+function renderTimeEntryRow(e) {
+  return `
+    <div class="cd-time-row" data-entry-id="${escapeHtml(e.id)}" data-hours="${escapeHtml(String(e.hours))}">
+      <span class="cd-time-h">${formatHours(e.hours)}h</span>
+      <span class="cd-time-note">${escapeHtml(e.note || '')}</span>
+      <span class="cd-time-meta">${escapeHtml(e.user_name)} · ${timeAgo(e.logged_at)}</span>
+      <button class="cd-time-del" data-time-del="${escapeHtml(e.id)}" title="Apagar">✕</button>
+    </div>
+  `;
+}
+
+function renderCommentRow(c) {
+  return `
+    <div class="cd-comment">
+      <div class="cd-comment-head">
+        <span class="cd-author">${escapeHtml(c.author_name)}</span>
+        <span class="cd-role cd-role-${c.author_role}">${c.author_role === 'studio' ? 'estúdio' : 'cliente'}</span>
+        <span class="cd-time">${timeAgo(c.created_at)}</span>
+      </div>
+      <div class="cd-comment-body">${escapeHtml(c.body).replace(/\n/g, '<br>')}</div>
+    </div>
+  `;
+}
+
+function updateHoursAside(overlay, card) {
+  const aside = overlay.querySelector('.cd-section h3:has(.cd-section-aside)');
+  if (!aside) return;
+  // the aside lives in the "Horas gastas" heading — find it by content
+  const headings = overlay.querySelectorAll('.cd-section h3');
+  for (const h of headings) {
+    if (h.textContent.toLowerCase().includes('horas gastas')) {
+      h.innerHTML = `Horas gastas <span class="cd-section-aside">${formatHours(card.actual_hours)} h${card.estimated_hours ? ` / ${formatHours(card.estimated_hours)} h estimadas` : ''}</span>`;
+      break;
+    }
+  }
+}
+
+function updateFilesHeading(overlay, count) {
+  const headings = overlay.querySelectorAll('.cd-section h3');
+  for (const h of headings) {
+    if (h.textContent.toLowerCase().includes('ficheiros')) {
+      h.textContent = `Ficheiros (${count})`;
+      break;
+    }
+  }
+}
+
+function updateCardHeaderPills(overlay, card) {
+  // The card-detail-head cd-meta row: priority badge + due + estimated + actual
+  const meta = overlay.querySelector('.card-detail-head .cd-meta');
+  if (!meta) return;
+  meta.innerHTML =
+    PRIORITY_BADGE(card.priority) +
+    (card.due_date ? `<span class="cd-pill">${new Date(card.due_date).toLocaleDateString('pt-PT')}</span>` : '') +
+    (card.estimated_hours ? `<span class="cd-pill">${formatHours(card.estimated_hours)} h estimadas</span>` : '') +
+    (card.actual_hours ? `<span class="cd-pill">${formatHours(card.actual_hours)} h gastas</span>` : '');
+}
+
+function updateSectionHeading(overlay, match, html) {
+  const headings = overlay.querySelectorAll('.cd-section h3');
+  for (const h of headings) {
+    if (h.textContent.toLowerCase().includes(match.toLowerCase())) {
+      h.innerHTML = html;
+      break;
+    }
+  }
+}
+
 // ---- Upload handler (called by file input change / drop) ----
-async function uploadAndAppend(file, projectId, cardId, container, status, onChange) {
+async function uploadAndAppend(file, projectId, cardId, container, status, onChange, overlay) {
   if (status) {
     status.style.display = '';
     status.textContent = `A enviar ${file.name}…`;
@@ -624,6 +765,8 @@ async function uploadAndAppend(file, projectId, cardId, container, status, onCha
     const div = document.createElement('div');
     div.innerHTML = renderFileRow(uploaded, true);
     container.prepend(div.firstElementChild);
+    // update the section heading count
+    if (overlay) updateFilesHeading(overlay, container.querySelectorAll('.cd-file').length);
     if (onChange) onChange();
     setTimeout(() => { if (status) status.style.display = 'none'; }, 2500);
   } catch (err) {
