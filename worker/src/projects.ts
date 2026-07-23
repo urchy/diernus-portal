@@ -15,6 +15,7 @@ clientRoutes.use('*',  requireAuth, requireRole('studio'));
 const DEFAULT_COLUMNS = [
   { name: 'A Fazer',   pos: 1024 },
   { name: 'Em Curso',  pos: 2048 },
+  { name: 'Revisão',   pos: 2560 },  // quality-gate: studio hands the card to the client for review here
   { name: 'Concluído', pos: 3072 },
 ];
 

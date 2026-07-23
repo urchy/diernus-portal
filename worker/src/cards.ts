@@ -2,12 +2,15 @@
 // Studio: full CRUD on any card in any of their projects
 // Client:  read-only on cards in their own projects; comments are handled separately
 // Studio-side mutations (create / move) also notify the project's client
-// so the client's bell lights up.
+// so the client's bell lights up. Moving a card to the "Revisão" column
+// ALSO sends an email to the project owner (the client) so they can
+// review — this is the quality-gate handoff.
 import { Hono } from 'hono';
 import type { AppVariables, Env, User, Card, CardPriority } from './types.js';
 import { requireAuth, requireRole } from './middleware.js';
 import { uuid } from './crypto.js';
 import { notifyClient } from './notifications.js';
+import { sendEmail, cardReviewEmail } from './resend.js';
 
 export const cardRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -287,6 +290,41 @@ cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
       message: `“${existing.title}” → ${targetCol.name}`,
       link: `/portal/projeto.html?id=${existing.project_id}&card=${c.req.param('id')}`,
     });
+
+    // Email the client if the card just landed in the "Revisão" column.
+    // This is the quality-gate handoff — the studio is asking the client
+    // to review. Sent via waitUntil so the API response doesn't wait for
+    // Resend. The destination column name match is case-insensitive and
+    // accent-insensitive (covers "Revisão", "revisao", "REVISÃO", etc).
+    const targetName = (targetCol.name || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+    if (targetName === 'revisao') {
+      const ctx = await c.env.DB
+        .prepare(`SELECT p.name AS project_name, p.id AS project_id, p.due_date,
+                  c.name AS client_name, c.email AS client_email
+                  FROM projects p JOIN users c ON c.id = p.client_id
+                  WHERE p.id = ?`)
+        .bind(existing.project_id)
+        .first<{ project_name: string; project_id: string; due_date: string | null; client_name: string; client_email: string }>();
+      if (ctx) {
+        const reviewUrl = `${c.env.PUBLIC_URL}/portal/projeto.html?id=${ctx.project_id}&card=${c.req.param('id')}`;
+        const tpl = cardReviewEmail({
+          clientName: ctx.client_name,
+          projectName: ctx.project_name,
+          cardTitle: existing.title,
+          cardId: c.req.param('id'),
+          projectId: existing.project_id,
+          publicUrl: c.env.PUBLIC_URL,
+          dueDate: existing.due_date || ctx.due_date,
+          studioName: me.name,
+          reviewUrl,
+        });
+        // Fire-and-forget: don't block the move response on Resend
+        c.executionCtx.waitUntil(
+          sendEmail(c.env, { to: ctx.client_email, ...tpl })
+            .catch(err => console.error('[cards.ts] review email failed:', err.message))
+        );
+      }
+    }
   }
 
   // Auto-complete: if this card just landed in a "Concluído" column and every

@@ -59,8 +59,11 @@ fileRoutes.post('/projects/:id/files', async (c) => {
   const me = c.get('user') as User;
   const form = await c.req.formData().catch(() => null);
   if (!form) return c.json({ error: 'formulário inválido' }, 400);
-  const file = form.get('file');
-  if (!(file instanceof File)) return c.json({ error: 'campo "file" em falta' }, 400);
+  const fileRaw = form.get('file');
+  const file = fileRaw as File | null;
+  if (!file || typeof file === 'object' && !('arrayBuffer' in file)) {
+    return c.json({ error: 'campo "file" em falta' }, 400);
+  }
   const cardIdRaw = form.get('card_id');
   const cardId = typeof cardIdRaw === 'string' && cardIdRaw.trim() ? cardIdRaw.trim() : null;
 
@@ -71,7 +74,7 @@ fileRoutes.post('/projects/:id/files', async (c) => {
     return c.json({ error: `ficheiro demasiado grande (máx. ${maxMb} MB)` }, 400);
   }
   // optional mime guard
-  if (ALLOWED_MIME && !ALLOWED_MIME.includes(file.type)) {
+  if (ALLOWED_MIME && !ALLOWED_MIME.includes((file as any).type)) {
     return c.json({ error: `tipo não permitido: ${file.type}` }, 400);
   }
   // if a card_id was provided, make sure it belongs to this project

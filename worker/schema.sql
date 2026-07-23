@@ -75,6 +75,22 @@ CREATE TABLE IF NOT EXISTS columns (
 );
 CREATE INDEX IF NOT EXISTS idx_columns_project ON columns(project_id, position);
 
+-- One-time migration: add "Revisão" column to every existing project that
+-- doesn't have it. Idempotent (skips if the project already has a Revisão
+-- column, e.g. because it was created after this migration ran).
+-- Position 2560 sits between Em Curso (2048) and Concluído (3072).
+-- UUID v4-ish: 4-char-2-char-4-2-6-char random hex, matches our uuid() helper.
+INSERT INTO columns (id, project_id, name, position)
+  SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6))),
+         p.id,
+         'Revisão',
+         2560
+  FROM projects p
+  WHERE NOT EXISTS (
+    SELECT 1 FROM columns k
+    WHERE k.project_id = p.id AND LOWER(k.name) IN ('revisão', 'revisao')
+  );
+
 -- =========================================================================
 -- cards — kanban cards
 -- =========================================================================

@@ -146,33 +146,50 @@ financeRoutes.get('/summary', async (c) => {
   }));
 
   // -------- MONTHLY BUCKETS (only when no specific month was asked) --------
-  // Build 12 buckets for the year, fill them with period hours + billed
+  // Build 12 buckets for the year, fill them with period hours + billed.
+  // Billed is computed per project (rate × hours for that project in
+  // that month), not the average rate across all projects. The "Per
+  // project" table above uses per-project rates; the chart should match
+  // so the user isn't confused by two different totals.
   let monthly: any[] = [];
   if (monthNum == null) {
+    // One row per (project, month) with hours, joined to the project's rate
     const monthlyRows = await c.env.DB
-      .prepare(`SELECT strftime('%m', t.logged_at) AS month,
+      .prepare(`SELECT p.id AS project_id, p.hourly_rate,
+                strftime('%m', t.logged_at) AS month,
                 COALESCE(SUM(t.hours), 0) AS hours,
                 COUNT(t.id) AS entries
-                FROM time_entries t
+                FROM projects p
+                JOIN cards k ON k.project_id = p.id
+                JOIN time_entries t ON t.card_id = k.id
                 WHERE t.logged_at >= ? AND t.logged_at < ?
-                GROUP BY month`)
+                GROUP BY p.id, month`)
       .bind(start, end)
-      .all<any>();
-    const monthMap = new Map(monthlyRows.results.map(r => [Number(r.month), r]));
+      .all<{ project_id: string; hourly_rate: number | null; month: string; hours: number; entries: number }>();
+    // Aggregate by month: total hours + billed (sum of project-specific billed).
+    // Important: compute billed on the RAW hours value, not the rounded
+    // display value — round1(2.75) becomes 2.8 due to floating point, and
+    // 2.8 × rate gives a different total than 2.75 × rate. The display
+    // is rounded; the math is not.
+    const byMonth = new Map<number, { hours: number; billed: number; entries: number }>();
+    for (const r of monthlyRows.results) {
+      const m = Number(r.month);
+      const bucket = byMonth.get(m) || { hours: 0, billed: 0, entries: 0 };
+      const rawHours = Number(r.hours) || 0;
+      bucket.hours += rawHours;
+      bucket.entries += Number(r.entries) || 0;
+      if (r.hourly_rate != null) bucket.billed += rawHours * Number(r.hourly_rate);
+      byMonth.set(m, bucket);
+    }
     const monthNames = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
     monthly = monthNames.map((name, i) => {
       const m = i + 1;
-      const data: any = monthMap.get(m) || { hours: 0, entries: 0 };
-      const hours = round1(Number(data.hours) || 0);
-      // We can't accurately compute billed per month without joining project rates.
-      // For simplicity, use the average rate across all projects that have one.
-      // (Better: group by project then by month. Kept simple for v1.)
-      const rates = projects.filter(p => p.hourly_rate != null).map(p => p.hourly_rate!);
-      const avgRate = rates.length ? rates.reduce((a, b) => a + b, 0) / rates.length : 0;
+      const data = byMonth.get(m) || { hours: 0, billed: 0, entries: 0 };
       return {
-        month: m, name, hours,
-        billed: round1(hours * avgRate),
-        entries: Number(data.entries) || 0,
+        month: m, name,
+        hours: round1(data.hours),
+        billed: round1(data.billed),
+        entries: data.entries,
       };
     });
   }
