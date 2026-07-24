@@ -116,6 +116,9 @@ export interface Env {
   PUBLIC_URL: string;
   ENVIRONMENT: string;
   MAX_UPLOAD_MB: string;
+  // Google OAuth (set with `wrangler secret put`)
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
 }
 
 // Variables/Helpers exported by Hono context

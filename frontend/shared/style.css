@@ -317,6 +317,31 @@ h2 {
 }
 .auth-card p.lede { color: var(--graphite-60); font-style: italic; font-size: .95rem; margin-bottom: 1.5rem; }
 
+/* Google SSO button — sits above the email/password form, distinct from .btn.primary */
+.btn-google {
+  display: flex; align-items: center; justify-content: center; gap: .65rem;
+  width: 100%; padding: .7rem 1rem;
+  background: #fff; color: var(--graphite);
+  border: 1px solid var(--graphite-25); border-radius: 6px;
+  font-family: var(--body); font-size: .95rem; font-weight: 500;
+  text-decoration: none; cursor: pointer;
+  transition: background-color .12s ease, border-color .12s ease, transform .04s ease;
+}
+.btn-google:hover { background: rgba(44,73,199,.04); border-color: var(--cobalt); }
+.btn-google:active { transform: translateY(1px); }
+.btn-google svg { flex: 0 0 18px; }
+
+.auth-divider {
+  display: flex; align-items: center; gap: .75rem;
+  margin: 1.1rem 0 1.1rem;
+  color: var(--graphite-60); font-size: .75rem; font-family: var(--mono);
+  letter-spacing: .12em; text-transform: uppercase;
+}
+.auth-divider::before, .auth-divider::after {
+  content: ''; flex: 1; height: 1px; background: var(--graphite-15);
+}
+.auth-divider span { padding: 0 .25rem; }
+
 /* ==========================================================================
    KANBAN BOARD
    ========================================================================== */

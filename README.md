@@ -52,10 +52,11 @@ frontend/              # Cloudflare Pages (HTML/CSS/JS)
 
 | Papel | Vê | Cria | Edita | Comenta |
 |---|---|---|---|---|
-| `studio` (estúdio) | tudo | tudo | tudo | sim |
+| `admin` (estúdio, owner) | tudo (incluindo Finanças) | tudo | tudo | sim |
+| `team` (estúdio, membro) | tudo **exceto** Finanças | tudo exceto convidar admins / ver finanças | tudo | sim |
 | `client` (cliente) | só os seus projetos | nada | nada | sim |
 
-Todas as queries D1 verificam `client_id = jwt.userId` quando o chamador é `client`.
+O `admin` pode promover um `team` a `admin` directamente na BD (não há UI para isso por agora — o estúdio é pequeno). Todas as queries D1 verificam `client_id = jwt.userId` quando o chamador é `client`. O middleware `requireStudio` aceita `admin` e `team`; `requireAdmin` só aceita `admin`.
 
 ## Convenção Kanban
 
@@ -82,7 +83,45 @@ npx wrangler secret put JWT_SECRET
 npx wrangler secret put RESEND_KEY
 npx wrangler secret put EMAIL_FROM
 npx wrangler secret put PUBLIC_URL
+npx wrangler secret put GOOGLE_CLIENT_ID        # opcional, para SSO Google
+npx wrangler secret put GOOGLE_CLIENT_SECRET    # opcional, para SSO Google
 ```
+
+## Autenticação
+
+Duas opções, ambas funcionam em paralelo:
+
+1. **Email + palavra-passe** — fluxo clássico. O admin cria o utilizador (cliente ou equipa), envia o convite, e a pessoa aceita em `/aceitar.html` definindo a sua palavra-passe.
+2. **Google SSO** — o utilizador clica "Continuar com Google" no login. Se o email já existir na BD, faz login com a role existente; se não existir, é criado como `client` (admins só por convite). Utilizadores convidados com `status='pending'` são activados automaticamente no primeiro sign-in Google.
+
+### Setup do Google OAuth (10 min, one-off)
+
+1. Ir a [Google Cloud Console → APIs & Services → Credentials](https://console.cloud.google.com/apis/credentials)
+2. Criar um projeto (ou usar um existente) → **Configure consent screen**:
+   - User type: **External**
+   - App name: `Diernus Portal`
+   - Support email: o teu email
+   - Scopes: `openid`, `email`, `profile`
+   - **Test users**: adicionar `andre@diernus.com` e `cliente.demo@diernus.com` (e qualquer outro que vá testar)
+3. Voltar a **Credentials** → **Create credentials** → **OAuth 2.0 Client ID** → Web application:
+   - Name: `Diernus Portal`
+   - **Authorized JavaScript origins**:
+     - `https://diernus-portal.pages.dev`               (staging)
+     - `https://diernus-portal-api.silva-andre-daniel.workers.dev`  (staging API)
+     - `https://portal.diernus.com`                     (produção, depois do cutover)
+     - `https://diernus-portal-api.diernus.com`         (produção API, depois do cutover)
+   - **Authorized redirect URIs**:
+     - `https://diernus-portal-api.silva-andre-daniel.workers.dev/api/auth/google/callback`  (staging)
+     - `https://diernus-portal-api.diernus.com/api/auth/google/callback`  (produção, depois do cutover)
+4. Copiar o **Client ID** e o **Client Secret** e pôr como secrets:
+   ```bash
+   cd worker
+   npx wrangler secret put GOOGLE_CLIENT_ID        # colar o Client ID
+   npx wrangler secret put GOOGLE_CLIENT_SECRET    # colar o Client Secret
+   ```
+5. Testar: abrir `https://diernus-portal.pages.dev/login.html`, clicar "Continuar com Google", escolher a conta, e deves voltar ao `/admin/` ou `/portal/`.
+
+**Nota sobre domínio de produção:** até o `diernus.com` estar na Cloudflare, o fluxo só funciona no URL de staging. Quando o domínio migrar, basta adicionar os 2 novos URIs ao mesmo OAuth client no Google Cloud — não é preciso criar um novo client.
 
 ## Deploy
 

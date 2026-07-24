@@ -1,7 +1,7 @@
-// Auth routes — login, me, logout, accept-invite
+// Auth routes — login, me, logout, accept-invite, Google OAuth
 import { Hono } from 'hono';
 import type { AppVariables, Env, User, Invitation } from './types.js';
-import { hashPassword, verifyPassword, signJwt, uuid } from './crypto.js';
+import { hashPassword, verifyPassword, signJwt, uuid, randomToken } from './crypto.js';
 import { setSessionCookie, clearSessionCookie, requireAuth } from './middleware.js';
 
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -100,4 +100,176 @@ authRoutes.post('/accept-invite', async (c) => {
   const token = await signJwt({ sub: userId, role: inv.role }, c.env.JWT_SECRET);
   setSessionCookie(c.res.headers, token, c.env.ENVIRONMENT === 'production');
   return c.json({ user: { id: userId, email, name, role: inv.role, status: 'active' } });
+});
+
+// =========================================================================
+// Google OAuth (SSO)
+// =========================================================================
+//
+// Flow:
+//   1. User clicks "Continuar com Google" on /login.html
+//   2. Browser navigates to /api/auth/google/start?returnTo=...
+//      → we generate a CSRF state token, store {returnTo} in KV keyed by it
+//        (5min TTL), and 302 to Google's authorization endpoint.
+//   3. Google handles consent, then 302s to /api/auth/google/callback?code=...&state=...
+//   4. We verify the state against KV, exchange the code for tokens at
+//      https://oauth2.googleapis.com/token, then fetch the user profile at
+//      https://www.googleapis.com/oauth2/v3/userinfo.
+//   5. Upsert the user by email:
+//        - existing 'active' user → log them in (role unchanged)
+//        - existing 'pending' user (invited but never accepted) → activate
+//        - new email             → create as 'client' (admins can only be
+//                                  created via the invite flow, not via signup)
+//   6. Issue our JWT session cookie and redirect to returnTo, or the role-
+//      appropriate landing page.
+//
+// Both routes are public (no requireAuth). The state token in KV is the
+// only thing preventing CSRF; we never trust a callback that doesn't
+// present a valid state we issued.
+//
+// To enable: set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET via
+// `wrangler secret put`. Without them, the routes return a clear 500 error.
+
+// GET /api/auth/google/start
+authRoutes.get('/google/start', async (c) => {
+  if (!c.env.GOOGLE_CLIENT_ID) {
+    return c.text('Google SSO não está configurado — falta GOOGLE_CLIENT_ID', 500);
+  }
+  const state = randomToken(24);
+  const returnTo = c.req.query('returnTo') || '';
+  // 5-minute TTL is plenty — the round-trip is seconds, not minutes.
+  await c.env.SESSIONS.put(
+    `google_oauth:${state}`,
+    JSON.stringify({ returnTo: returnTo.slice(0, 500) }), // cap length, no abuse
+    { expirationTtl: 600 }
+  );
+  const redirectUri = `${c.env.PUBLIC_URL}/api/auth/google/callback`;
+  const params = new URLSearchParams({
+    client_id: c.env.GOOGLE_CLIENT_ID,
+    redirect_uri: redirectUri,
+    response_type: 'code',
+    scope: 'openid email profile',
+    state,
+    // 'online' = we get an access_token but no refresh_token. Fine for SSO
+    // (we only need the profile once at sign-in).
+    access_type: 'online',
+    // 'select_account' = always show the account picker, even if the user
+    // is already signed in to Google. This is what most production apps do
+    // — never silently sign in as a stale account.
+    prompt: 'select_account',
+  });
+  return c.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+// GET /api/auth/google/callback
+authRoutes.get('/google/callback', async (c) => {
+  if (!c.env.GOOGLE_CLIENT_ID || !c.env.GOOGLE_CLIENT_SECRET) {
+    return c.text('Google SSO não está configurado — falta GOOGLE_CLIENT_ID ou GOOGLE_CLIENT_SECRET', 500);
+  }
+  const code  = c.req.query('code');
+  const state = c.req.query('state');
+  const err   = c.req.query('error');
+  if (err) return c.text(`Google recusou o pedido: ${err}`, 400);
+  if (!code || !state) return c.text('faltam parâmetros code/state', 400);
+
+  // ---- 1. Verify state (CSRF) ----
+  const stateData = await c.env.SESSIONS.get(`google_oauth:${state}`);
+  if (!stateData) return c.text('estado inválido ou expirado — reinicie o início de sessão', 400);
+  // Consume the state immediately so it can't be replayed.
+  await c.env.SESSIONS.delete(`google_oauth:${state}`);
+  let returnTo = '';
+  try { returnTo = (JSON.parse(stateData) as { returnTo?: string }).returnTo || ''; } catch {}
+
+  // ---- 2. Exchange code for tokens ----
+  const redirectUri = `${c.env.PUBLIC_URL}/api/auth/google/callback`;
+  const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      code,
+      client_id: c.env.GOOGLE_CLIENT_ID,
+      client_secret: c.env.GOOGLE_CLIENT_SECRET,
+      redirect_uri: redirectUri,
+      grant_type: 'authorization_code',
+    }),
+  });
+  if (!tokenRes.ok) {
+    const body = await tokenRes.text();
+    console.error('Google token exchange failed:', tokenRes.status, body);
+    return c.text('falha ao trocar o código por tokens — verifique o Client Secret', 500);
+  }
+  const tokens = await tokenRes.json() as { access_token?: string; id_token?: string };
+  if (!tokens.access_token) return c.text('Google não devolveu access_token', 500);
+
+  // ---- 3. Fetch user profile ----
+  const profileRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+    headers: { Authorization: `Bearer ${tokens.access_token}` },
+  });
+  if (!profileRes.ok) return c.text('falha ao obter perfil do Google', 500);
+  const profile = await profileRes.json() as {
+    sub: string;
+    email: string;
+    email_verified?: boolean | string; // Google sometimes returns "true" as a string
+    name?: string;
+    picture?: string;
+  };
+  if (!profile.email) return c.text('Google não devolveu email', 400);
+  if (profile.email_verified === false || profile.email_verified === 'false') {
+    return c.text('o email do Google não está verificado', 403);
+  }
+
+  const email = profile.email.toLowerCase().trim();
+  const name  = (profile.name || email.split('@')[0]).slice(0, 200);
+
+  // ---- 4. Upsert user by email ----
+  const existing = await c.env.DB
+    .prepare('SELECT id, email, name, role, status FROM users WHERE email = ?')
+    .bind(email)
+    .first<User & { status: string }>();
+
+  let userId: string;
+  let userRole: 'admin' | 'team' | 'client';
+
+  if (existing) {
+    if (existing.status === 'suspended') {
+      return c.text('esta conta está suspensa — contacte o estúdio', 403);
+    }
+    userId = existing.id;
+    userRole = existing.role as 'admin' | 'team' | 'client';
+    // If they were 'pending' (invited but never set a password), activate
+    // them now. The studio already approved them by sending the invite.
+    if (existing.status === 'pending') {
+      await c.env.DB
+        .prepare("UPDATE users SET status = 'active' WHERE id = ?")
+        .bind(userId)
+        .run();
+    }
+  } else {
+    // New email — create as 'client' (admins must be invited, not self-signup).
+    // password_hash stays as a random unguessable placeholder; the user can
+    // log in via Google from now on. If they ever need a password, the
+    // studio can set one via D1 (out of band).
+    userId = uuid();
+    const placeholder = '!google-' + randomToken(48);
+    await c.env.DB
+      .prepare("INSERT INTO users (id, email, password_hash, name, role, status) VALUES (?, ?, ?, ?, 'client', 'active')")
+      .bind(userId, email, placeholder, name)
+      .run();
+    userRole = 'client';
+  }
+
+  // ---- 5. Issue session cookie + redirect ----
+  const jwt = await signJwt({ sub: userId, role: userRole }, c.env.JWT_SECRET);
+  setSessionCookie(c.res.headers, jwt, c.env.ENVIRONMENT === 'production');
+
+  // Validate returnTo is a relative path (don't allow open redirects to
+  // other domains). Only accept paths starting with a single slash.
+  let dest = '';
+  if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
+    dest = returnTo;
+  }
+  if (!dest) {
+    dest = userRole === 'client' ? '/portal/' : '/admin/';
+  }
+  return c.redirect(dest);
 });
