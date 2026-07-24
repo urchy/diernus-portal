@@ -11,7 +11,7 @@ import { requireAuth, requireStudio } from './middleware.js';
 import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { notifyClient } from './notifications.js';
-import { sendEmail, cardReviewEmail } from './resend.js';
+import { sendEmail, cardReviewEmail, projectCompletedEmail } from './resend.js';
 
 export const cardRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -351,7 +351,7 @@ cardRoutes.post('/cards/:id/move', requireStudio, async (c) => {
           .bind(existing.project_id)
           .run();
         project_completed = true;
-        // tell the client their project is done
+        // tell the client their project is done (bell)
         const me = c.get('user') as User;
         const projRow = await c.env.DB
           .prepare('SELECT name FROM projects WHERE id = ?')
@@ -366,6 +366,34 @@ cardRoutes.post('/cards/:id/move', requireStudio, async (c) => {
           message: `“${projRow?.name || 'o projeto'}” está concluído.`,
           link: `/portal/projeto.html?id=${existing.project_id}`,
         });
+        // Email the client + every studio member
+        const finalCardTitle = existing.title;
+        const projectName = projRow?.name || 'o projeto';
+        const recipients = await c.env.DB
+          .prepare(`SELECT u.id, u.name, u.email, u.role,
+                    CASE WHEN u.id = p.client_id THEN 1 ELSE 0 END AS is_client
+                    FROM users u JOIN projects p ON p.id = ?
+                    WHERE u.status = 'active' AND (u.id = p.client_id OR u.role IN ('admin', 'team'))`)
+          .bind(existing.project_id)
+          .all<{ id: string; name: string; email: string; role: string; is_client: number }>();
+        for (const r of recipients.results) {
+          const isClient = r.is_client === 1;
+          const portalPath = isClient
+            ? `/portal/projeto.html?id=${existing.project_id}`
+            : `/admin/projeto.html?id=${existing.project_id}`;
+          const projectUrl = `${c.env.PUBLIC_URL}${portalPath}`;
+          const tpl = projectCompletedEmail({
+            recipientName: r.name,
+            projectName,
+            finalCardTitle,
+            projectUrl,
+            forClient: isClient,
+          });
+          c.executionCtx.waitUntil(
+            sendEmail(c.env, { to: r.email, ...tpl })
+              .catch(err => console.error(`[cards.ts] project-completed email to ${r.email} failed:`, err.message))
+          );
+        }
       }
     }
   }

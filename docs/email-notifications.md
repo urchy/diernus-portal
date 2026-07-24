@@ -41,12 +41,14 @@ whether the email send succeeds — they're independent.
 |---|------|---------|-----------|--------|
 | 1 | `invitation` | `POST /api/clients/:id/invite` and team invites | the invitee | **DONE** |
 | 2 | `card_review` | Card moved to "Revisão" column | project owner (client) | **DONE** |
-| 3 | `project_completed` | Auto-complete: last card → Concluído | project owner (client) | NEXT |
-| 4 | `card_overdue` | Cron: card.due_date < today AND not Concluído | studio members | NEXT |
-| 5 | `project_overdue` | Cron: project.due_date < today AND not completed | studio members + client | NEXT |
-| 6 | `client_invited` | Send the invite link when a client is first created (today we just return `accept_url` in the response) | the new client | BACKLOG |
-| 7 | `weekly_summary` | Cron: Monday 9am | studio (per-member breakdown of the previous week) | BACKLOG |
-| 8 | `payment_due` | Hook from a future invoicing module | client | LATER — no payment system yet |
+| 3 | `comment` | New comment on a card (studio + client, both directions) | the opposite side | **DONE** |
+| 4 | `file` | New file upload (studio + client, both directions) | the opposite side | **DONE** |
+| 5 | `project_completed` | Auto-complete: last card → Concluído | client + every studio member | **DONE** |
+| 6 | `card_overdue` | Cron: card.due_date < today AND not Concluído | studio members | NEXT |
+| 7 | `project_overdue` | Cron: project.due_date < today AND not completed | studio members + client | NEXT |
+| 8 | `client_invited` | Send the invite link when a client is first created (today we just return `accept_url` in the response) | the new client | BACKLOG |
+| 9 | `weekly_summary` | Cron: Monday 9am | studio (per-member breakdown of the previous week) | BACKLOG |
+| 10 | `payment_due` | Hook from a future invoicing module | client | LATER — no payment system yet |
 
 ## How to add a new type (worked example: `project_completed`)
 

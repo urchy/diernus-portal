@@ -3,12 +3,15 @@
 // 25 MB to keep the bucket tidy). Notifications flow BOTH directions:
 //   client uploads  → notifyStudio() (the studio bell lights up)
 //   studio uploads  → notifyClient() (the client bell lights up)
+// Emails flow in the OPPOSITE direction: whoever uploaded, the other
+// side gets the email with the filename + deep link.
 import { Hono } from 'hono';
 import type { AppVariables, Env, FileRecord, User } from './types.js';
 import { requireAuth } from './middleware.js';
 import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { notifyStudio, notifyClient } from './notifications.js';
+import { sendEmail, fileEmail } from './resend.js';
 
 export const fileRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 fileRoutes.use('*', requireAuth);
@@ -113,6 +116,9 @@ fileRoutes.post('/projects/:id/files', async (c) => {
     .bind(c.req.param('id'))
     .first<{ name: string }>();
   const where = cardId ? ' (no cartão)' : '';
+  const sizeStr = file.size < 1024 ? `${file.size} B`
+    : file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB`
+    : `${(file.size / 1024 / 1024).toFixed(1)} MB`;
   if (isClient(me.role)) {
     await notifyStudio(c.env, {
       type: 'client_file',
@@ -122,6 +128,23 @@ fileRoutes.post('/projects/:id/files', async (c) => {
       message: `“${safeName}” em ${ctx?.name || 'o projeto'}${where}`,
       link: `/admin/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`,
     });
+    // Email each studio member
+    const recipients = await c.env.DB
+      .prepare(`SELECT name, email FROM users WHERE role IN ('admin', 'team') AND status = 'active' AND id != ?`)
+      .bind(me.id)
+      .all<{ name: string; email: string }>();
+    const portalUrl = `${c.env.PUBLIC_URL}/admin/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`;
+    for (const r of recipients.results) {
+      const tpl = fileEmail({
+        recipientName: r.name, authorName: me.name, authorRole: 'client',
+        projectName: ctx?.name || 'o projeto', fileName: safeName, fileSize: sizeStr,
+        where, portalUrl,
+      });
+      c.executionCtx.waitUntil(
+        sendEmail(c.env, { to: r.email, ...tpl })
+          .catch(err => console.error(`[files.ts] client→studio email to ${r.email} failed:`, err.message))
+      );
+    }
   } else {
     await notifyClient(c.env, {
       projectId: c.req.param('id'),
@@ -132,6 +155,23 @@ fileRoutes.post('/projects/:id/files', async (c) => {
       message: `“${safeName}” em ${ctx?.name || 'o projeto'}${where}`,
       link: `/portal/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`,
     });
+    // Email the project owner (the client)
+    const client = await c.env.DB
+      .prepare(`SELECT c.name, c.email FROM users c JOIN projects p ON p.client_id = c.id WHERE p.id = ?`)
+      .bind(c.req.param('id'))
+      .first<{ name: string; email: string }>();
+    if (client) {
+      const portalUrl = `${c.env.PUBLIC_URL}/portal/projeto.html?id=${c.req.param('id')}${cardId ? `&card=${cardId}` : ''}`;
+      const tpl = fileEmail({
+        recipientName: client.name, authorName: me.name, authorRole: 'studio',
+        projectName: ctx?.name || 'o projeto', fileName: safeName, fileSize: sizeStr,
+        where, portalUrl,
+      });
+      c.executionCtx.waitUntil(
+        sendEmail(c.env, { to: client.email, ...tpl })
+          .catch(err => console.error(`[files.ts] studio→client email to ${client.email} failed:`, err.message))
+      );
+    }
   }
   return c.json({ file: record }, 201);
 });

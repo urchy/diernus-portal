@@ -2,12 +2,15 @@
 // Notifications flow BOTH directions:
 //   client comments  → notifyStudio() (the studio bell lights up)
 //   studio comments  → notifyClient() (the client bell lights up)
+// Emails flow in the OPPOSITE direction: whoever posted, the other side
+// gets the email (with the comment snippet + deep link to the card).
 import { Hono } from 'hono';
 import type { AppVariables, Env, User } from './types.js';
 import { requireAuth } from './middleware.js';
 import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { notifyStudio, notifyClient } from './notifications.js';
+import { sendEmail, commentEmail } from './resend.js';
 
 export const commentRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -80,6 +83,23 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
         message: `em “${ctx.card_title}” — “${snippet}”`,
         link: `/admin/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`,
       });
+      // Email each studio member (admin + team) — fan-out like the bell
+      const recipients = await c.env.DB
+        .prepare(`SELECT id, name, email FROM users WHERE role IN ('admin', 'team') AND status = 'active' AND id != ?`)
+        .bind(me.id)
+        .all<{ id: string; name: string; email: string }>();
+      const cardUrl = `${c.env.PUBLIC_URL}/admin/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`;
+      for (const r of recipients.results) {
+        const tpl = commentEmail({
+          recipientName: r.name, authorName: me.name, authorRole: 'client',
+          projectName: ctx.project_name, cardTitle: ctx.card_title,
+          commentSnippet: snippet, cardUrl,
+        });
+        c.executionCtx.waitUntil(
+          sendEmail(c.env, { to: r.email, ...tpl })
+            .catch(err => console.error(`[comments.ts] client→studio email to ${r.email} failed:`, err.message))
+        );
+      }
     } else {
       // studio → client: title "Resposta do estúdio", body "em 'card' — 'snippet'"
       await notifyClient(c.env, {
@@ -91,6 +111,23 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
         message: `em “${ctx.card_title}” — “${snippet}”`,
         link: `/portal/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`,
       });
+      // Email the project owner (the client)
+      const client = await c.env.DB
+        .prepare(`SELECT c.name, c.email FROM users c JOIN projects p ON p.client_id = c.id WHERE p.id = ?`)
+        .bind(ctx.project_id)
+        .first<{ name: string; email: string }>();
+      if (client) {
+        const cardUrl = `${c.env.PUBLIC_URL}/portal/projeto.html?id=${ctx.project_id}&card=${c.req.param('cardId')}`;
+        const tpl = commentEmail({
+          recipientName: client.name, authorName: me.name, authorRole: 'studio',
+          projectName: ctx.project_name, cardTitle: ctx.card_title,
+          commentSnippet: snippet, cardUrl,
+        });
+        c.executionCtx.waitUntil(
+          sendEmail(c.env, { to: client.email, ...tpl })
+            .catch(err => console.error(`[comments.ts] studio→client email to ${client.email} failed:`, err.message))
+        );
+      }
     }
   }
   return c.json({ comment }, 201);
