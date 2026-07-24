@@ -267,14 +267,19 @@ authRoutes.get('/google/callback', async (c) => {
   const jwt = await signJwt({ sub: userId, role: userRole }, c.env.JWT_SECRET);
   setSessionCookie(c.res.headers, jwt, c.env.ENVIRONMENT === 'production');
 
-  // Validate returnTo is a relative path (don't allow open redirects to
-  // other domains). Only accept paths starting with a single slash.
+  // The OAuth callback runs on the Worker, not on the Pages frontend.
+  // So a relative redirect like "/portal/" would 404 on the Worker.
+  // We MUST build an absolute URL pointing to the frontend (PUBLIC_URL).
+  //
+  // returnTo validation: only accept paths starting with a single slash
+  // (defense against open-redirect to other domains).
+  const frontend = c.env.PUBLIC_URL.replace(/\/$/, ''); // strip trailing /
   let dest = '';
   if (returnTo && returnTo.startsWith('/') && !returnTo.startsWith('//')) {
-    dest = returnTo;
+    dest = frontend + returnTo;
   }
   if (!dest) {
-    dest = userRole === 'client' ? '/portal/' : '/admin/';
+    dest = frontend + (userRole === 'client' ? '/portal/' : '/admin/');
   }
   return c.redirect(dest);
 });
