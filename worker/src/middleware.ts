@@ -1,6 +1,7 @@
 // Auth middleware — verifies the JWT cookie and attaches the user to the context.
 import type { MiddlewareHandler } from 'hono';
 import type { AppVariables, Env, User } from './types.js';
+import { isStudio, isAdmin } from './types.js';
 import { verifyJwt } from './crypto.js';
 
 const COOKIE_NAME = 'diernus_session';
@@ -60,9 +61,29 @@ export const requireAuth: MiddlewareHandler<{ Bindings: Env; Variables: AppVaria
   return next();
 };
 
-export const requireRole = (role: 'studio' | 'client'): MiddlewareHandler<{ Bindings: Env; Variables: AppVariables }> =>
+// Role guards — the 3-role system:
+//   requireAuth    — must be logged in
+//   requireStudio  — admin OR team (replaces the old requireRole('studio'))
+//   requireAdmin   — admin only (e.g. finance)
+//   requireRole('client') — kept for client-only paths (rare; usually we do
+//                          a per-resource ownership check instead)
+export const requireRole = (role: 'client'): MiddlewareHandler<{ Bindings: Env; Variables: AppVariables }> =>
   async (c, next) => {
     const u = c.get('user');
     if (!u || u.role !== role) return c.json({ error: 'forbidden' }, 403);
+    return next();
+  };
+
+export const requireStudio: MiddlewareHandler<{ Bindings: Env; Variables: AppVariables }> =
+  async (c, next) => {
+    const u = c.get('user');
+    if (!u || !isStudio(u.role)) return c.json({ error: 'forbidden' }, 403);
+    return next();
+  };
+
+export const requireAdmin: MiddlewareHandler<{ Bindings: Env; Variables: AppVariables }> =
+  async (c, next) => {
+    const u = c.get('user');
+    if (!u || !isAdmin(u.role)) return c.json({ error: 'forbidden' }, 403);
     return next();
   };

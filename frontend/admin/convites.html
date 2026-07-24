@@ -31,9 +31,11 @@
 
       const row = i => {
         const status = i.accepted_at ? 'aceite' : new Date(i.expires_at) < now ? 'expirado' : 'pendente';
+        const roleLabel = i.role === 'admin' ? 'admin' : i.role === 'team' ? 'equipa' : 'cliente';
+        const rolePillCls = i.role === 'admin' ? 'active' : i.role === 'team' ? 'pending' : '';
         return `<tr>
           <td class="name">${escapeHtml(i.name)}<small><span class="mono">${escapeHtml(i.email)}</span></small></td>
-          <td><span class="status-pill ${i.role === 'client' ? 'pending' : 'active'}">${i.role === 'client' ? 'cliente' : 'estúdio'}</span></td>
+          <td><span class="status-pill ${rolePillCls}">${roleLabel}</span></td>
           <td><span class="mono" style="font-size:.78rem">${timeAgo(i.created_at)}</span></td>
           <td><span class="mono" style="font-size:.78rem;color:var(--graphite-60)">${fmtDate(i.expires_at)}</span></td>
           <td><span class="status-pill ${status === 'aceite' ? 'active' : status === 'pendente' ? 'pending' : 'suspended'}">${status}</span></td>

@@ -19,7 +19,7 @@ export async function verifyPassword(plain: string, hash: string): Promise<boole
   return bcrypt.compare(plain, hash);
 }
 
-export async function signJwt(payload: { sub: string; role: 'studio' | 'client' }, secret: string): Promise<string> {
+export async function signJwt(payload: { sub: string; role: 'admin' | 'team' | 'client' }, secret: string): Promise<string> {
   return new SignJWT({ role: payload.role })
     .setProtectedHeader({ alg: ALG })
     .setSubject(payload.sub)
@@ -29,10 +29,10 @@ export async function signJwt(payload: { sub: string; role: 'studio' | 'client' 
     .sign(secretKey(secret));
 }
 
-export async function verifyJwt(token: string, secret: string): Promise<{ sub: string; role: 'studio' | 'client' } | null> {
+export async function verifyJwt(token: string, secret: string): Promise<{ sub: string; role: 'admin' | 'team' | 'client' } | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey(secret), { issuer: ISSUER });
-    if (typeof payload.sub !== 'string' || (payload.role !== 'studio' && payload.role !== 'client')) return null;
+    if (typeof payload.sub !== 'string' || (payload.role !== 'admin' && payload.role !== 'team' && payload.role !== 'client')) return null;
     return { sub: payload.sub, role: payload.role };
   } catch {
     return null;

@@ -2,7 +2,8 @@
 // Projects — studio creates, both list (filtered by role)
 import { Hono } from 'hono';
 import type { AppVariables, Env, Project, User } from './types.js';
-import { requireAuth, requireRole } from './middleware.js';
+import { requireAuth, requireStudio } from './middleware.js';
+import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { createInvitation } from './invites.js';
 
@@ -10,7 +11,7 @@ export const projectRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }
 export const clientRoutes  = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 projectRoutes.use('*', requireAuth);
-clientRoutes.use('*',  requireAuth, requireRole('studio'));
+clientRoutes.use('*',  requireAuth, requireStudio);
 
 const DEFAULT_COLUMNS = [
   { name: 'A Fazer',   pos: 1024 },
@@ -24,9 +25,11 @@ const DEFAULT_COLUMNS = [
 // =========================================================================
 
 // GET /api/projects — list projects visible to the user
+//   admin/team → all projects
+//   client     → only projects where they're the client_id
 projectRoutes.get('/', async (c) => {
   const u = c.get('user') as User;
-  const sql = u.role === 'studio'
+  const sql = isStudio(u.role)
     ? `SELECT p.*, c.name AS client_name, c.email AS client_email, c.status AS client_status
        FROM projects p JOIN users c ON c.id = p.client_id
        ORDER BY p.updated_at DESC LIMIT 200`
@@ -35,7 +38,7 @@ projectRoutes.get('/', async (c) => {
        WHERE p.client_id = ?
        ORDER BY p.updated_at DESC LIMIT 200`;
   const stmt = c.env.DB.prepare(sql);
-  const rows = u.role === 'studio' ? await stmt.all<Project & { client_name: string; client_email: string; client_status: string }>()
+  const rows = isStudio(u.role) ? await stmt.all<Project & { client_name: string; client_email: string; client_status: string }>()
                                      : await stmt.bind(u.id).all<Project & { client_name: string; client_email: string; client_status: string }>();
   return c.json({ projects: rows.results });
 });
@@ -51,7 +54,7 @@ projectRoutes.get('/:id', async (c) => {
     .bind(id)
     .first<Project & { client_name: string; client_email: string; client_status: string }>();
   if (!proj) return c.json({ error: 'projeto não encontrado' }, 404);
-  if (u.role === 'client' && proj.client_id !== u.id) return c.json({ error: 'forbidden' }, 403);
+  if (isClient(u.role) && proj.client_id !== u.id) return c.json({ error: 'forbidden' }, 403);
   const cols = await c.env.DB
     .prepare('SELECT id, project_id, name, position FROM columns WHERE project_id = ? ORDER BY position')
     .bind(id)
@@ -59,8 +62,8 @@ projectRoutes.get('/:id', async (c) => {
   return c.json({ project: proj, columns: cols.results });
 });
 
-// PATCH /api/projects/:id — update (studio only). Status, name, description, hourly_rate, budget_hours.
-projectRoutes.patch('/:id', requireRole('studio'), async (c) => {
+// PATCH /api/projects/:id — update (admin + team). Status, name, description, hourly_rate, budget_hours.
+projectRoutes.patch('/:id', requireStudio, async (c) => {
   const existing = await c.env.DB
     .prepare('SELECT id FROM projects WHERE id = ?')
     .bind(c.req.param('id'))
@@ -85,8 +88,8 @@ projectRoutes.patch('/:id', requireRole('studio'), async (c) => {
   return c.json({ project });
 });
 
-// POST /api/projects — create (studio only)
-projectRoutes.post('/', requireRole('studio'), async (c) => {
+// POST /api/projects — create (admin + team)
+projectRoutes.post('/', requireStudio, async (c) => {
   const me = c.get('user') as User;
   const body = await c.req.json().catch(() => null) as { client_id?: string; name?: string; description?: string } | null;
   if (!body?.client_id || !body?.name) return c.json({ error: 'cliente e nome são obrigatórios' }, 400);

@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
   email           TEXT UNIQUE NOT NULL,
   password_hash   TEXT,                                       -- nullable: pending clients have no password yet
   name            TEXT NOT NULL,
-  role            TEXT NOT NULL CHECK (role IN ('studio', 'client')),
+  role            TEXT NOT NULL CHECK (role IN ('admin', 'team', 'client')),
   status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'suspended')),
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   last_seen_at    TEXT
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS invitations (
   id              TEXT PRIMARY KEY,
   email           TEXT NOT NULL,
   name            TEXT NOT NULL,
-  role            TEXT NOT NULL CHECK (role IN ('studio', 'client')),
+  role            TEXT NOT NULL CHECK (role IN ('admin', 'team', 'client')),
   token           TEXT UNIQUE NOT NULL,
   invited_by      TEXT NOT NULL,
   expires_at      TEXT NOT NULL,

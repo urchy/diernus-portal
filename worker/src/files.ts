@@ -6,6 +6,7 @@
 import { Hono } from 'hono';
 import type { AppVariables, Env, FileRecord, User } from './types.js';
 import { requireAuth } from './middleware.js';
+import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { notifyStudio, notifyClient } from './notifications.js';
 
@@ -23,8 +24,8 @@ async function assertProjectAccess(c: { get: (k: string) => unknown; env: Env },
     .bind(projectId)
     .first<{ id: string; client_id: string }>();
   if (!p) return null;
-  if (u.role === 'studio') return 'studio';
-  if (u.role === 'client' && p.client_id === u.id) return 'client';
+  if (isStudio(u.role)) return 'studio';
+  if (isClient(u.role) && p.client_id === u.id) return 'client';
   return null;
 }
 
@@ -68,7 +69,7 @@ fileRoutes.post('/projects/:id/files', async (c) => {
   const cardId = typeof cardIdRaw === 'string' && cardIdRaw.trim() ? cardIdRaw.trim() : null;
 
   // size cap (studio gets 50 MB, clients 25 MB)
-  const maxMb = me.role === 'studio' ? MAX_UPLOAD_MB_STUDIO : MAX_UPLOAD_MB_CLIENT;
+  const maxMb = isStudio(me.role) ? MAX_UPLOAD_MB_STUDIO : MAX_UPLOAD_MB_CLIENT;
   const maxBytes = maxMb * 1024 * 1024;
   if (file.size > maxBytes) {
     return c.json({ error: `ficheiro demasiado grande (máx. ${maxMb} MB)` }, 400);
@@ -112,7 +113,7 @@ fileRoutes.post('/projects/:id/files', async (c) => {
     .bind(c.req.param('id'))
     .first<{ name: string }>();
   const where = cardId ? ' (no cartão)' : '';
-  if (me.role === 'client') {
+  if (isClient(me.role)) {
     await notifyStudio(c.env, {
       type: 'client_file',
       refKind: 'project',
@@ -160,7 +161,7 @@ fileRoutes.get('/files/:id', async (c) => {
 // DELETE /api/files/:id — delete a file (studio only)
 fileRoutes.delete('/files/:id', async (c) => {
   const u = c.get('user') as User;
-  if (u.role !== 'studio') return c.json({ error: 'forbidden' }, 403);
+  if (!isStudio(u.role)) return c.json({ error: 'forbidden' }, 403);
   const file = await c.env.DB
     .prepare('SELECT * FROM files WHERE id = ?')
     .bind(c.req.param('id'))

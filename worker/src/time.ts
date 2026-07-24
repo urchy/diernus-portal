@@ -1,19 +1,20 @@
-// Time entries — hours logged against a card (studio only).
+// Time entries — hours logged against a card (admin + team).
 //   - cards.actual_hours is kept in sync as a cached sum
 //   - listing is per-card and (on the finance endpoint) per-user/period
 import { Hono } from 'hono';
 import type { AppVariables, Env, User } from './types.js';
-import { requireAuth, requireRole } from './middleware.js';
+import { requireAuth, requireStudio } from './middleware.js';
+import { isStudio } from './types.js';
 import { uuid } from './crypto.js';
 
 export const timeRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
-timeRoutes.use('*', requireAuth, requireRole('studio'));
+timeRoutes.use('*', requireAuth, requireStudio);
 
 // helper: assert the studio can access the card's project
 async function assertProjectAccess(c: { get: (k: string) => unknown; env: Env }, projectId: string) {
-  // studio role always has access; this is just a safety check
+  // studio role (admin or team) always has access; this is just a safety check
   const u = c.get('user') as User;
-  if (u.role !== 'studio') return false;
+  if (!isStudio(u.role)) return false;
   const p = await c.env.DB.prepare('SELECT id FROM projects WHERE id = ?').bind(projectId).first<{ id: string }>();
   return !!p;
 }

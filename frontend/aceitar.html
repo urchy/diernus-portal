@@ -77,7 +77,7 @@
         });
         const data = await r.json();
         if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
-        location.replace(data.user.role === 'studio' ? '/admin/' : '/portal/');
+        location.replace((data.user.role === 'admin' || data.user.role === 'team') ? '/admin/' : '/portal/');
       } catch (e) {
         err.textContent = e.message;
         err.style.display = '';

@@ -7,7 +7,8 @@
 // review — this is the quality-gate handoff.
 import { Hono } from 'hono';
 import type { AppVariables, Env, User, Card, CardPriority } from './types.js';
-import { requireAuth, requireRole } from './middleware.js';
+import { requireAuth, requireStudio } from './middleware.js';
+import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { notifyClient } from './notifications.js';
 import { sendEmail, cardReviewEmail } from './resend.js';
@@ -25,16 +26,16 @@ async function assertProjectAccess(c: { get: (k: string) => unknown; env: Env },
     .bind(projectId)
     .first<{ id: string; client_id: string }>();
   if (!p) return null;
-  if (u.role === 'studio') return 'studio';
-  if (u.role === 'client' && p.client_id === u.id) return 'client';
+  if (isStudio(u.role)) return 'studio';
+  if (isClient(u.role) && p.client_id === u.id) return 'client';
   return null;
 }
 
-// GET /api/board — admin-only multi-project Jira-style board
+// GET /api/board — admin/team-only multi-project Jira-style board
 // Returns all projects (non-archived) + all columns + all cards in one shot.
 // The frontend groups columns by name to render a unified 3-column board,
 // and filters by project when the admin focuses on a single client.
-cardRoutes.get('/board', requireRole('studio'), async (c) => {
+cardRoutes.get('/board', requireStudio, async (c) => {
   // Only active projects show on the multi-board. completed/archived projects
   // drop off automatically (auto-complete kicks in when all cards close).
   const projects = await c.env.DB
@@ -161,7 +162,7 @@ cardRoutes.get('/projects/:id/board', async (c) => {
 });
 
 // POST /api/projects/:id/cards — create a card (studio only)
-cardRoutes.post('/projects/:id/cards', requireRole('studio'), async (c) => {
+cardRoutes.post('/projects/:id/cards', requireStudio, async (c) => {
   const access = await assertProjectAccess(c, c.req.param('id'));
   if (!access) return c.json({ error: 'não encontrado' }, 404);
   const me = c.get('user') as User;
@@ -205,7 +206,7 @@ cardRoutes.post('/projects/:id/cards', requireRole('studio'), async (c) => {
 });
 
 // PATCH /api/cards/:id — update card (studio only)
-cardRoutes.patch('/cards/:id', requireRole('studio'), async (c) => {
+cardRoutes.patch('/cards/:id', requireStudio, async (c) => {
   const existing = await c.env.DB
     .prepare('SELECT * FROM cards WHERE id = ?')
     .bind(c.req.param('id'))
@@ -237,7 +238,7 @@ cardRoutes.patch('/cards/:id', requireRole('studio'), async (c) => {
 
 // POST /api/cards/:id/move — move card to a different column + position
 // body: { column_id, position? }   (position optional, defaults to end of column)
-cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
+cardRoutes.post('/cards/:id/move', requireStudio, async (c) => {
   const existing = await c.env.DB
     .prepare('SELECT * FROM cards WHERE id = ?')
     .bind(c.req.param('id'))
@@ -373,7 +374,7 @@ cardRoutes.post('/cards/:id/move', requireRole('studio'), async (c) => {
 });
 
 // DELETE /api/cards/:id (studio only)
-cardRoutes.delete('/cards/:id', requireRole('studio'), async (c) => {
+cardRoutes.delete('/cards/:id', requireStudio, async (c) => {
   const existing = await c.env.DB
     .prepare('SELECT * FROM cards WHERE id = ?')
     .bind(c.req.param('id'))

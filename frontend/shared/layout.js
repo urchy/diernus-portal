@@ -15,8 +15,10 @@ const ICON = {
   logout:   '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6"/></svg>',
 };
 
-const NAV = {
-  studio: [
+// 3-role nav: admin and team share the same nav shape, except
+// team does NOT see Finanças. The NAV table is built per-role below.
+const NAV_BASE = {
+  admin: [
     { group: 'GERAL',    items: [
       { key: 'overview', label: 'Visão geral', href: '/admin/' },
       { key: 'board',    label: 'Quadro geral', href: '/admin/board.html' },
@@ -26,6 +28,21 @@ const NAV = {
       { key: 'clients',   label: 'Clientes',    href: '/admin/clientes.html' },
       { key: 'team',      label: 'Equipa',      href: '/admin/equipa.html' },
       { key: 'finance',   label: 'Finanças',    href: '/admin/financas.html' },
+    ]},
+    { group: 'COMUNICAÇÃO', items: [
+      { key: 'invites',   label: 'Convites',    href: '/admin/convites.html' },
+    ]},
+  ],
+  team: [
+    { group: 'GERAL',    items: [
+      { key: 'overview', label: 'Visão geral', href: '/admin/' },
+      { key: 'board',    label: 'Quadro geral', href: '/admin/board.html' },
+    ]},
+    { group: 'GESTÃO',   items: [
+      { key: 'projects',  label: 'Projetos',    href: '/admin/projetos.html' },
+      { key: 'clients',   label: 'Clientes',    href: '/admin/clientes.html' },
+      { key: 'team',      label: 'Equipa',      href: '/admin/equipa.html' },
+      // finance is admin-only — omitted for team
     ]},
     { group: 'COMUNICAÇÃO', items: [
       { key: 'invites',   label: 'Convites',    href: '/admin/convites.html' },
@@ -41,22 +58,34 @@ const NAV = {
   ],
 };
 
+// Role → display label, used in the sidebar user-block
+const ROLE_LABEL = {
+  admin: 'admin',
+  team:  'equipa',
+  client: 'cliente',
+};
+
+const NAV = NAV_BASE; // alias so existing `NAV[me.role]` access keeps working
+
 export async function renderLayout({ active, crumbs = [] }) {
   let me;
   try { me = (await api.me()).user; }
   catch { location.replace('/login.html'); throw new Error('not logged in'); }
 
   // For client users, send to /portal/ if they hit an /admin/ page
-  if (me.role !== 'studio' && location.pathname.startsWith('/admin/')) {
+  // admin and team both go to /admin/
+  if (me.role === 'client' && location.pathname.startsWith('/admin/')) {
     location.replace('/portal/'); throw new Error('not a studio user');
   }
-  if (me.role === 'studio' && location.pathname.startsWith('/portal/')) {
+  if (me.role !== 'client' && location.pathname.startsWith('/portal/')) {
     location.replace('/admin/');  throw new Error('not a client');
   }
 
-  const nav = NAV[me.role];
-  const isStudio = me.role === 'studio';
+  // Fall back to empty nav if the role somehow doesn't match (defense in depth)
+  const nav = NAV[me.role] || [];
+  const isStudio = me.role === 'admin' || me.role === 'team';
   const base = isStudio ? '/admin' : '/portal';
+  const roleLabel = ROLE_LABEL[me.role] || (isStudio ? 'estúdio' : 'cliente');
 
   const initial = (me.name || me.email).trim().charAt(0).toUpperCase();
 
@@ -85,7 +114,7 @@ export async function renderLayout({ active, crumbs = [] }) {
       <div class="avatar">${escapeHtml(initial)}</div>
       <div class="user-meta">
         <div class="user-name">${escapeHtml(me.name)}</div>
-        <div class="user-role">${isStudio ? 'estúdio' : 'cliente'}</div>
+        <div class="user-role">${escapeHtml(roleLabel)}</div>
       </div>
       <button class="logout" id="logout" title="Sair">
         ${ICON.logout}

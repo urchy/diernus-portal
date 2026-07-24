@@ -7,14 +7,14 @@
 //       pending user when they accept.
 import { Hono } from 'hono';
 import type { AppVariables, Env, User, Invitation } from './types.js';
-import { requireAuth, requireRole } from './middleware.js';
+import { requireAuth, requireStudio } from './middleware.js';
 import { randomToken, uuid } from './crypto.js';
 import { sendEmail, invitationEmail } from './resend.js';
 
 export const inviteRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
-// All invite routes are studio-only
-inviteRoutes.use('*', requireAuth, requireRole('studio'));
+// All invite routes are studio-only (admin + team)
+inviteRoutes.use('*', requireAuth, requireStudio);
 
 // GET /api/invites — list recent invitations
 inviteRoutes.get('/', async (c) => {
@@ -28,15 +28,21 @@ inviteRoutes.get('/', async (c) => {
 // POST /api/invites — invite a NEW person (not yet in the system)
 // For existing clients, use POST /api/clients/:id/invite instead.
 inviteRoutes.post('/', async (c) => {
-  const body = await c.req.json().catch(() => null) as { email?: string; name?: string; role?: 'studio' | 'client' } | null;
+  const body = await c.req.json().catch(() => null) as { email?: string; name?: string; role?: 'admin' | 'team' | 'client' } | null;
   if (!body?.email || !body?.name || !body?.role) {
     return c.json({ error: 'email, nome e papel são obrigatórios' }, 400);
   }
-  if (body.role !== 'studio' && body.role !== 'client') {
+  if (body.role !== 'admin' && body.role !== 'team' && body.role !== 'client') {
     return c.json({ error: 'papel inválido' }, 400);
   }
   const email = body.email.toLowerCase().trim();
   const me = c.get('user') as User;
+
+  // Only admins can create other admins. Team members can only invite
+  // other team members (or clients, but clients come through /api/clients).
+  if (body.role === 'admin' && me.role !== 'admin') {
+    return c.json({ error: 'só um admin pode convidar outro admin' }, 403);
+  }
 
   // Refuse if user already exists
   const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
@@ -58,8 +64,8 @@ inviteRoutes.post('/', async (c) => {
 // (with accept_url embedded if email failed).
 export async function createInvitation(
   env: Env,
-  args: { email: string; name: string; role: 'studio' | 'client'; invitedBy: string },
-): Promise<{ invitation: { id: string; email: string; name: string; role: 'studio' | 'client'; expires_at: string; accept_url?: string }; warning?: string }> {
+  args: { email: string; name: string; role: 'admin' | 'team' | 'client'; invitedBy: string },
+): Promise<{ invitation: { id: string; email: string; name: string; role: 'admin' | 'team' | 'client'; expires_at: string; accept_url?: string }; warning?: string }> {
   const id = uuid();
   const token = randomToken();
   const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();

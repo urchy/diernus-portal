@@ -329,7 +329,7 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
                 <div class="cd-comment">
                   <div class="cd-comment-head">
                     <span class="cd-author">${escapeHtml(c.author_name)}</span>
-                    <span class="cd-role cd-role-${c.author_role}">${c.author_role === 'studio' ? 'estúdio' : 'cliente'}</span>
+                    <span class="cd-role cd-role-${c.author_role === 'client' ? 'client' : 'studio'}">${c.author_role === 'client' ? 'cliente' : 'estúdio'}</span>
                     <span class="cd-time">${timeAgo(c.created_at)}</span>
                   </div>
                   <div class="cd-comment-body">${escapeHtml(c.body).replace(/\n/g, '<br>')}</div>
@@ -707,7 +707,7 @@ function renderCommentRow(c) {
     <div class="cd-comment">
       <div class="cd-comment-head">
         <span class="cd-author">${escapeHtml(c.author_name)}</span>
-        <span class="cd-role cd-role-${c.author_role}">${c.author_role === 'studio' ? 'estúdio' : 'cliente'}</span>
+        <span class="cd-role cd-role-${c.author_role === 'client' ? 'client' : 'studio'}">${c.author_role === 'client' ? 'cliente' : 'estúdio'}</span>
         <span class="cd-time">${timeAgo(c.created_at)}</span>
       </div>
       <div class="cd-comment-body">${escapeHtml(c.body).replace(/\n/g, '<br>')}</div>

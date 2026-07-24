@@ -8,10 +8,10 @@
 //   When hourly_rate is null, billed is null (project not yet priced).
 import { Hono } from 'hono';
 import type { AppVariables, Env } from './types.js';
-import { requireAuth, requireRole } from './middleware.js';
+import { requireAuth, requireAdmin } from './middleware.js';
 
 export const financeRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
-financeRoutes.use('*', requireAuth, requireRole('studio'));
+financeRoutes.use('*', requireAuth, requireAdmin);
 
 financeRoutes.get('/summary', async (c) => {
   const now = new Date();

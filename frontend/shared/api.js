@@ -42,9 +42,9 @@ export const api = {
   inviteClient: (id) => request('/api/clients/' + encodeURIComponent(id) + '/invite', { method: 'POST' }),
   deleteClient: (id) => request('/api/clients/' + encodeURIComponent(id), { method: 'DELETE' }),
 
-  // Team (studio)
+  // Team (studio — admin and team both create invites; admin can choose role)
   team:     () => request('/api/invites'),
-  inviteTeam: (email, name) => request('/api/invites', { method: 'POST', body: { email, name, role: 'studio' } }),
+  inviteTeam: (email, name, role = 'team') => request('/api/invites', { method: 'POST', body: { email, name, role } }),
   reInvite: (email, name, role) => request('/api/invites', { method: 'POST', body: { email, name, role } }),
 
   // Projects

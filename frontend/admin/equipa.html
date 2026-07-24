@@ -19,6 +19,12 @@
       <form id="form">
         <label class="field"><label>Nome</label><input type="text" name="name" required></label>
         <label class="field"><label>Email</label><input type="email" name="email" required></label>
+        <label class="field"><label>Tipo de acesso</label>
+          <select name="role" id="inviteRole" required>
+            <option value="team">Equipa — vê tudo exceto Finanças</option>
+            <option value="admin" id="adminOption">Admin — vê tudo incluindo Finanças</option>
+          </select>
+        </label>
         <div class="row" style="display:flex;gap:.55rem">
           <button type="button" class="btn ghost" id="cancel" style="flex:1;justify-content:center;padding:.55rem">Cancelar</button>
           <button type="submit" class="btn primary" id="submit" style="flex:1;justify-content:center;padding:.55rem">Enviar convite</button>
@@ -41,6 +47,17 @@
       const me = allUsers.user;
       // also fetch active studio members
       const { members } = await api.teamMembers().catch(() => ({ members: [] }));
+      const iAmAdmin = me.role === 'admin';
+
+      // hide the "Admin" option from the invite dropdown for non-admins
+      const adminOption = document.getElementById('adminOption');
+      if (adminOption) adminOption.style.display = iAmAdmin ? '' : 'none';
+
+      const rolePill = (r) =>
+        r === 'admin' ? '<span class="status-pill active">admin</span>'
+      : r === 'team'  ? '<span class="status-pill pending">equipa</span>'
+      :                '<span class="status-pill">—</span>';
+
       content.innerHTML = `
         <div class="page-head">
           <div>
@@ -55,11 +72,12 @@
         ${members.length === 0
           ? '<div class="empty"><div class="empty-title">Ainda só você</div><div class="empty-sub">Convide outra pessoa para o estúdio para partilhar projetos e tempo.</div></div>'
           : `<table class="table">
-              <thead><tr><th>Nome</th><th>Email</th><th>Último acesso</th></tr></thead>
+              <thead><tr><th>Nome</th><th>Email</th><th>Tipo</th><th>Último acesso</th></tr></thead>
               <tbody>${members.map(m => `
                 <tr>
                   <td class="name">${escapeHtml(m.name)}${m.id === me.id ? ' <span class="status-pill active" style="margin-left:.5rem">tu</span>' : ''}</td>
                   <td><span class="mono" style="font-size:.8rem">${escapeHtml(m.email)}</span></td>
+                  <td>${rolePill(m.role)}</td>
                   <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${m.last_seen_at ? timeAgo(m.last_seen_at) : 'nunca'}</span></td>
                 </tr>
               `).join('')}</tbody>
@@ -70,27 +88,28 @@
           const pending = (team.invitations || []).filter(i => !i.accepted_at && new Date(i.expires_at) > new Date());
           if (pending.length === 0) return '<div class="empty"><div class="empty-title">Sem convites pendentes</div><div class="empty-sub">Quando enviar um convite, ele aparece aqui até ser aceite ou expirar.</div></div>';
           return `<table class="table">
-            <thead><tr><th>Nome</th><th>Email</th><th>Expira</th><th></th></tr></thead>
+            <thead><tr><th>Nome</th><th>Email</th><th>Tipo</th><th>Expira</th><th></th></tr></thead>
             <tbody>${pending.map(i => `
               <tr>
                 <td class="name">${escapeHtml(i.name)}</td>
                 <td><span class="mono" style="font-size:.8rem">${escapeHtml(i.email)}</span></td>
+                <td>${rolePill(i.role)}</td>
                 <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(i.expires_at)}</span></td>
-                <td class="actions"><button class="btn sm ghost" data-resend="${escapeHtml(i.email)}">Reenviar</button></td>
+                <td class="actions"><button class="btn sm ghost" data-resend="${escapeHtml(i.email)}" data-role="${escapeHtml(i.role)}">Reenviar</button></td>
               </tr>`).join('')}</tbody>
           </table>`;
         })()}
       `;
       document.getElementById('newTeam').addEventListener('click', openModal);
-      // resend buttons
+      // resend buttons — preserve the original role
       content.querySelectorAll('button[data-resend]').forEach(b => {
         b.addEventListener('click', async () => {
           const email = b.dataset.resend;
-          // we need a name to re-invite; ask for it
+          const role = b.dataset.role || 'team';
           const name = prompt('Nome completo do membro:', email.split('@')[0]);
           if (!name) return;
           try {
-            const r = await api.inviteTeam(email, name);
+            const r = await api.inviteTeam(email, name, role);
             if (r.warning) prompt('Email não enviado — copie este link para enviar manualmente:', r.invitation.accept_url);
             else alert('Convite reenviado para ' + email);
           } catch (e) { alert('Erro: ' + e.message); }
@@ -112,7 +131,9 @@
       const submit = document.getElementById('submit');
       submit.disabled = true; submit.textContent = 'A enviar…';
       try {
-        const res = await api.inviteTeam(data.get('email'), data.get('name'));
+        // Default to 'team'; admins can choose 'admin' from the dropdown.
+        const role = data.get('role') || 'team';
+        const res = await api.inviteTeam(data.get('email'), data.get('name'), role);
         if (res.warning) prompt('Email não enviado — copie este link para enviar manualmente:', res.invitation.accept_url);
         closeModal();
         await render();

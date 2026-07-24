@@ -39,9 +39,10 @@
     const err  = document.getElementById('err');
     const btn  = document.getElementById('submit');
 
+    const isStudio = (role) => role === 'admin' || role === 'team';
     try {
       const { user } = await api.me();
-      location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+      location.replace(isStudio(user.role) ? '/admin/' : '/portal/');
     } catch {}
 
     form.addEventListener('submit', async (e) => {
@@ -51,7 +52,7 @@
       const data = new FormData(form);
       try {
         const { user } = await api.login(data.get('email'), data.get('password'));
-        location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+        location.replace(isStudio(user.role) ? '/admin/' : '/portal/');
       } catch (e) {
         err.textContent = e.message;
         err.style.display = '';

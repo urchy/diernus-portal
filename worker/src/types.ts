@@ -1,6 +1,28 @@
 // Shared types — Diernus Portal
 
-export type Role = 'studio' | 'client';
+// Three-role system:
+//   admin  — full access including finance
+//   team   — full access EXCEPT finance
+//   client — only own projects (read + comment + upload)
+export type Role = 'admin' | 'team' | 'client';
+
+// Helper: admin and team both have studio-level access.
+// Use isStudio(role) instead of `role !== 'client'`.
+export type StudioRole = 'admin' | 'team';
+export const isStudio = (role: Role | string): role is StudioRole =>
+  role === 'admin' || role === 'team';
+export const isAdmin  = (role: Role | string): role is 'admin' =>
+  role === 'admin';
+export const isClient = (role: Role | string): role is 'client' =>
+  role === 'client';
+
+// Legacy alias — kept for any callers that still say 'studio'.
+// We map 'studio' → 'admin' (i.e. treat old studio users as full admins).
+export const normaliseRole = (role: string): Role => {
+  if (role === 'admin' || role === 'team' || role === 'client') return role;
+  if (role === 'studio') return 'admin';
+  return 'client';
+};
 
 export interface User {
   id: string;

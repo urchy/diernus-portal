@@ -13,7 +13,8 @@
     // Decide where to go: if logged in, portal or admin; else login
     try {
       const { user } = await api.me();
-      location.replace(user.role === 'studio' ? '/admin/' : '/portal/');
+      const isStudio = user.role === 'admin' || user.role === 'team';
+      location.replace(isStudio ? '/admin/' : '/portal/');
     } catch {
       location.replace('/login.html');
     }

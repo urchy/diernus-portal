@@ -1,10 +1,11 @@
-// Comments — both studio and client can post on cards in their projects.
+// Comments — both studio (admin/team) and client can post on cards in their projects.
 // Notifications flow BOTH directions:
 //   client comments  → notifyStudio() (the studio bell lights up)
 //   studio comments  → notifyClient() (the client bell lights up)
 import { Hono } from 'hono';
 import type { AppVariables, Env, User } from './types.js';
 import { requireAuth } from './middleware.js';
+import { isStudio, isClient } from './types.js';
 import { uuid } from './crypto.js';
 import { notifyStudio, notifyClient } from './notifications.js';
 
@@ -18,8 +19,8 @@ async function assertCardAccess(c: { get: (k: string) => unknown; env: Env }, ca
   if (!card) return null;
   const p = await c.env.DB.prepare('SELECT client_id FROM projects WHERE id = ?').bind(card.project_id).first<{ client_id: string }>();
   if (!p) return null;
-  if (u.role === 'studio') return 'studio';
-  if (u.role === 'client' && p.client_id === u.id) return 'client';
+  if (isStudio(u.role)) return 'studio';
+  if (isClient(u.role) && p.client_id === u.id) return 'client';
   return null;
 }
 
@@ -69,7 +70,7 @@ commentRoutes.post('/cards/:cardId/comments', async (c) => {
     const snippet = body.body.trim().length > 80
       ? body.body.trim().slice(0, 77) + '…'
       : body.body.trim();
-    if (me.role === 'client') {
+    if (isClient(me.role)) {
       // client → studio: title "Novo comentário", body "em 'card' — 'snippet'"
       await notifyStudio(c.env, {
         type: 'client_comment',
