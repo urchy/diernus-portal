@@ -53,9 +53,16 @@
     const google = document.getElementById('googleBtn');
     const returnTo = new URLSearchParams(location.search).get('returnTo') || '';
 
+    // API base URL — the Worker that owns /api/auth/google/*.
+    // In staging, Pages (the frontend) and the Worker (the API) live on
+    // different Cloudflare subdomains, so we need an absolute URL here.
+    // After the diernus.com cutover this stays correct: just swap the
+    // host to diernus-portal-api.diernus.com.
+    const API_BASE = 'https://diernus-portal-api.silva-andre-daniel.workers.dev';
+
     // Wire the Google button to navigate to the OAuth start endpoint,
     // preserving returnTo so users land back where they came from.
-    google.href = '/api/auth/google/start?returnTo=' + encodeURIComponent(returnTo);
+    google.href = API_BASE + '/api/auth/google/start?returnTo=' + encodeURIComponent(returnTo);
 
     const isStudio = (role) => role === 'admin' || role === 'team';
     const defaultLanding = (role) => isStudio(role) ? '/admin/' : '/portal/';

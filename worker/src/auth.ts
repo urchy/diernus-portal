@@ -143,7 +143,11 @@ authRoutes.get('/google/start', async (c) => {
     JSON.stringify({ returnTo: returnTo.slice(0, 500) }), // cap length, no abuse
     { expirationTtl: 600 }
   );
-  const redirectUri = `${c.env.PUBLIC_URL}/api/auth/google/callback`;
+  // The redirect_uri MUST match exactly what's registered in Google Cloud.
+  // We derive it from the request's own origin (the Worker), not from
+  // PUBLIC_URL — because PUBLIC_URL points to the Pages frontend for
+  // emails/CORS, while the API lives on the Worker subdomain.
+  const redirectUri = new URL(c.req.url).origin + '/api/auth/google/callback';
   const params = new URLSearchParams({
     client_id: c.env.GOOGLE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -181,7 +185,8 @@ authRoutes.get('/google/callback', async (c) => {
   try { returnTo = (JSON.parse(stateData) as { returnTo?: string }).returnTo || ''; } catch {}
 
   // ---- 2. Exchange code for tokens ----
-  const redirectUri = `${c.env.PUBLIC_URL}/api/auth/google/callback`;
+  // Same redirect_uri as the start — MUST match exactly.
+  const redirectUri = new URL(c.req.url).origin + '/api/auth/google/callback';
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
