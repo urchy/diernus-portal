@@ -465,6 +465,32 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
     } catch (err) { alert('Erro: ' + err.message); }
   });
 
+  // time entry edit (event delegation)
+  overlay.addEventListener('click', async e => {
+    const editBtn = e.target.closest('button[data-time-edit]');
+    if (!editBtn) return;
+    const row = editBtn.closest('.cd-time-row');
+    if (!row) return;
+    // pre-fill the modal from the current row state (no extra API call)
+    const entry = {
+      id: editBtn.dataset.timeEdit,
+      hours: Number(row.dataset.hours || 0),
+      note: (row.querySelector('.cd-time-note')?.textContent || '').trim(),
+    };
+    await openEditTimeEntryModal(entry, (updated) => {
+      const oldHours = Number(row.dataset.hours);
+      row.dataset.hours = String(updated.hours);
+      row.querySelector('.cd-time-h').textContent = formatHours(updated.hours) + 'h';
+      row.querySelector('.cd-time-note').textContent = updated.note || '';
+      // shift card.actual_hours by the delta
+      card.actual_hours = Math.max(0, (card.actual_hours || 0) - oldHours + updated.hours);
+      updateHoursAside(overlay, card);
+      updateCardHeaderPills(overlay, card);
+      showToast('Registo atualizado');
+      onChange();
+    });
+  });
+
   // file upload — both studio and client can upload
   {
     const fileInput = overlay.querySelector('#fileInput');
@@ -508,6 +534,17 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
       }
     });
   }
+
+  // file preview — both studio and client (image thumb toggle / PDF modal)
+  overlay.addEventListener('click', async e => {
+    const prevBtn = e.target.closest('button[data-file-preview]');
+    if (!prevBtn) return;
+    const fileId = prevBtn.dataset.filePreview;
+    const file = files.find(f => f.id === fileId);
+    if (!file) return;
+    const row = prevBtn.closest('.cd-file');
+    await openFilePreview(file, row);
+  });
 
   // priority buttons
   if (canEdit) {
@@ -686,18 +723,87 @@ function buildSummaryHeader(project, summary, canEdit) {
 }
 
 // ---- File row in the card detail ----
-function renderFileRow(f, canEdit) {
+// Exported so the standalone project-files section in admin/projeto.html
+// can render the same row shape (incl. the preview button) without copy-paste.
+export function renderFileRow(f, canEdit) {
   const sizeKB = f.size < 1024 * 1024
     ? Math.max(1, Math.round(f.size / 1024)) + ' KB'
     : (f.size / 1024 / 1024).toFixed(1) + ' MB';
   const ext = (f.filename.split('.').pop() || '?').toLowerCase();
+  const previewKind = filePreviewKind(f);
+  const previewLabel = previewKind === 'image' ? 'Ver imagem' : previewKind === 'pdf' ? 'Pré-visualizar' : null;
   return `
     <div class="cd-file">
       <span class="cd-file-ext cd-file-ext-${escapeHtml(ext)}">${escapeHtml(ext.slice(0, 4))}</span>
       <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${escapeHtml(f.filename)}</a>
       <span class="cd-file-meta">${sizeKB} · ${escapeHtml(f.uploader_name || '')}</span>
+      ${previewLabel ? `<button class="cd-file-preview" data-file-preview="${escapeHtml(f.id)}" data-preview-kind="${previewKind}" title="${previewLabel}">${previewKind === 'image' ? '🖼' : '👁'}</button>` : ''}
       ${canEdit ? `<button class="cd-file-del" data-file-del="${escapeHtml(f.id)}" title="Apagar">✕</button>` : ''}
     </div>`;
+}
+
+// File extensions we know how to preview in the browser without an
+// external service.  Add to this list as we add support.
+const IMAGE_EXTS = new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'avif', 'bmp']);
+const PDF_EXTS   = new Set(['pdf']);
+function filePreviewKind(f) {
+  const ext = (f.filename.split('.').pop() || '').toLowerCase();
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (PDF_EXTS.has(ext))   return 'pdf';
+  // honour a server-stored mime type for files without a useful extension
+  if (f.mime_type) {
+    if (f.mime_type.startsWith('image/')) return 'image';
+    if (f.mime_type === 'application/pdf') return 'pdf';
+  }
+  return null;
+}
+
+// ---- File preview ----
+// For images: toggles an inline thumbnail under the row. Click the thumb to
+// open the full image in a modal. For PDFs: opens a modal with the built-in
+// browser PDF viewer. Range requests are handled by the Worker.
+export async function openFilePreview(file, fileRowEl) {
+  const kind = filePreviewKind(file);
+  if (!kind) return;
+  if (kind === 'image') {
+    // toggle an inline thumbnail below the row
+    const existing = fileRowEl.nextElementSibling;
+    if (existing && existing.classList.contains('cd-file-thumb-row')) {
+      existing.remove();
+      return;
+    }
+    const row = document.createElement('div');
+    row.className = 'cd-file-thumb-row';
+    row.innerHTML = `
+      <a class="cd-file-thumb-link" href="${api.filePreviewUrl(file.id)}" target="_blank" rel="noopener" title="Abrir em ecrã inteiro">
+        <img class="cd-file-thumb" src="${api.filePreviewUrl(file.id)}" alt="${escapeHtml(file.filename)}" loading="lazy">
+        <span class="cd-file-thumb-name">${escapeHtml(file.filename)}</span>
+      </a>
+    `;
+    fileRowEl.after(row);
+  } else if (kind === 'pdf') {
+    const overlay = document.createElement('div');
+    overlay.className = 'preview-back on';
+    overlay.innerHTML = `
+      <div class="preview-modal">
+        <header class="preview-head">
+          <span class="preview-title">${escapeHtml(file.filename)}</span>
+          <div class="preview-actions">
+            <a class="btn sm ghost" href="${api.fileDownloadUrl(file.id)}" target="_blank" rel="noopener" download>Descarregar</a>
+            <button class="cd-close" id="previewClose" title="Fechar">✕</button>
+          </div>
+        </header>
+        <iframe class="preview-frame" src="${api.filePreviewUrl(file.id)}" title="${escapeHtml(file.filename)}"></iframe>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+    const close = () => overlay.remove();
+    overlay.querySelector('#previewClose').addEventListener('click', close);
+    overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+    // close on Esc
+    const onKey = (e) => { if (e.key === 'Escape') { close(); document.removeEventListener('keydown', onKey); } };
+    document.addEventListener('keydown', onKey);
+  }
 }
 
 // ---- Per-card panel helpers (used by openCardDetail's in-place updates) ----
@@ -707,9 +813,63 @@ function renderTimeEntryRow(e) {
       <span class="cd-time-h">${formatHours(e.hours)}h</span>
       <span class="cd-time-note">${escapeHtml(e.note || '')}</span>
       <span class="cd-time-meta">${escapeHtml(e.user_name)} · ${timeAgo(e.logged_at)}</span>
+      <button class="cd-time-edit" data-time-edit="${escapeHtml(e.id)}" title="Editar registo">✎</button>
       <button class="cd-time-del" data-time-del="${escapeHtml(e.id)}" title="Apagar">✕</button>
     </div>
   `;
+}
+
+// ---- Edit time entry modal (studio only) ----
+// Pre-fills hours + note; saves via PATCH /api/time-entries/:id and lets the
+// caller update the panel state in place. `onSaved(entry)` receives the
+// updated entry so the parent can refresh the aside / card header pills.
+export async function openEditTimeEntryModal(entry, onSaved) {
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-back on';
+  overlay.innerHTML = `
+    <div class="modal">
+      <h2>Editar registo de horas</h2>
+      <div class="error" id="err" style="display:none"></div>
+      <form id="form">
+        <label class="field"><label>Horas</label>
+          <input type="number" name="hours" step="0.25" min="0.25" max="24" value="${escapeHtml(String(entry.hours))}" required autofocus>
+        </label>
+        <label class="field"><label>Nota (opcional)</label>
+          <input type="text" name="note" value="${escapeHtml(entry.note || '')}" maxlength="500" placeholder="o que foi feito">
+        </label>
+        <div class="row" style="display:flex;gap:.55rem">
+          <button type="button" class="btn ghost" id="cancel" style="flex:1;justify-content:center;padding:.55rem">Cancelar</button>
+          <button type="submit" class="btn primary" id="submit" style="flex:1;justify-content:center;padding:.55rem">Guardar</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  const close = () => overlay.remove();
+  overlay.querySelector('#cancel').addEventListener('click', close);
+  overlay.addEventListener('click', e => { if (e.target === overlay) close(); });
+  overlay.querySelector('#form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const hours = Number(fd.get('hours'));
+    const note = (fd.get('note') || '').toString();
+    if (!Number.isFinite(hours) || hours <= 0) {
+      const el = overlay.querySelector('#err');
+      el.textContent = 'horas inválidas'; el.style.display = ''; return;
+    }
+    const submit = overlay.querySelector('#submit');
+    submit.disabled = true; submit.textContent = 'A guardar…';
+    try {
+      const { entry: updated } = await api.updateTimeEntry(entry.id, { hours, note: note || undefined });
+      close();
+      onSaved(updated);
+    } catch (err) {
+      const el = overlay.querySelector('#err');
+      el.textContent = err.message;
+      el.style.display = '';
+      submit.disabled = false; submit.textContent = 'Guardar';
+    }
+  });
 }
 
 function renderCommentRow(c) {

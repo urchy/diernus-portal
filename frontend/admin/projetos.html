@@ -30,47 +30,170 @@
     </div>
   </div>
   <script type="module">
-    import { renderLayout, timeAgo, pageLoading, safeRender } from '/shared/layout.js';
+    import { renderLayout, timeAgo, pageLoading, safeRender, showToast } from '/shared/layout.js';
     import { api } from '/shared/api.js';
     const { content } = await renderLayout({ active: 'projects', crumbs: ['Projetos'] });
     const loading = pageLoading(content, 'A carregar projetos…');
     function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 
-    async function render() {
-      const { projects } = await api.projects();
-      content.innerHTML = `
-        <div class="page-head">
-          <div>
-            <span class="eyebrow">Projetos</span>
-            <h1>${projects.length} ${projects.length === 1 ? 'projeto' : 'projetos'}</h1>
-            <p class="lede">Crie projetos para os seus clientes. Cada projeto traz um kanban (A Fazer / Em Curso / Concluído) onde pode adicionar cartões e onde o cliente pode comentar.</p>
-          </div>
-          <div class="actions"><button class="btn primary" id="newProject">+ Novo projeto</button></div>
+    // ------------------------------------------------------------------
+    // State — fetched once, filtered client-side (project lists are small)
+    // ------------------------------------------------------------------
+    let allProjects = [];   // canonical list from the server
+    let filterStatus = 'all';
+    let filterSearch = '';
+    let filterDue    = 'all';
+
+    // ------------------------------------------------------------------
+    // Page chrome (rendered once, stable across re-renders)
+    // ------------------------------------------------------------------
+    content.innerHTML = `
+      <div class="page-head">
+        <div>
+          <span class="eyebrow">Projetos</span>
+          <h1 id="projCount">…</h1>
+          <p class="lede">Crie projetos para os seus clientes. Cada projeto traz um kanban (A Fazer / Em Curso / Concluído) onde pode adicionar cartões e onde o cliente pode comentar.</p>
         </div>
-        ${projects.length === 0
-          ? '<div class="empty"><div class="empty-title">Sem projetos ainda</div><div class="empty-sub">Crie um cliente primeiro em <a href="/admin/clientes.html">Clientes</a>, depois crie um projeto para esse cliente.</div></div>'
-          : `<table class="table">
-              <thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th><th class="row-actions"></th></tr></thead>
-              <tbody>${projects.map(p => `
-                <tr>
-                  <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(p.id)}">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
-                  <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
-                  <td>${p.hourly_rate != null ? `<span class="mono" style="font-size:.78rem">${Number(p.hourly_rate).toFixed(0)} €/h</span>` : '<span class="mono" style="color:var(--graphite-60);font-size:.78rem">—</span>'}</td>
-                  <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
-                  <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
-                  <td class="row-actions"><a class="btn sm primary" href="/admin/projeto.html?id=${encodeURIComponent(p.id)}">Abrir ›</a></td>
-                </tr>
-              `).join('')}</tbody>
-            </table>`}
-      `;
-      document.getElementById('newProject').addEventListener('click', openModal);
+        <div class="actions"><button class="btn primary" id="newProject">+ Novo projeto</button></div>
+      </div>
+      <div class="proj-filters">
+        <div class="proj-filters-row">
+          <input type="search" id="projSearch" class="proj-search" placeholder="Pesquisar por nome, cliente ou email…" autocomplete="off">
+          <select id="projDue" class="proj-due-sel" title="Filtrar por prazo">
+            <option value="all">Prazo: todos</option>
+            <option value="none">Sem prazo</option>
+            <option value="overdue">Atrasados</option>
+            <option value="week">Vence esta semana</option>
+            <option value="month">Vence este mês</option>
+            <option value="future">Mais de 30 dias</option>
+          </select>
+        </div>
+        <div class="proj-tabs" id="projTabs" role="tablist">
+          <button type="button" class="proj-tab is-active" data-status="all"      role="tab">Todos      <span class="proj-tab-n" data-cnt="all">0</span></button>
+          <button type="button" class="proj-tab"           data-status="active"   role="tab">Ativos     <span class="proj-tab-n" data-cnt="active">0</span></button>
+          <button type="button" class="proj-tab"           data-status="completed" role="tab">Concluídos <span class="proj-tab-n" data-cnt="completed">0</span></button>
+          <button type="button" class="proj-tab"           data-status="archived"  role="tab">Arquivados <span class="proj-tab-n" data-cnt="archived">0</span></button>
+        </div>
+      </div>
+      <div id="projTable"></div>
+    `;
+
+    document.getElementById('newProject').addEventListener('click', openModal);
+
+    // Filter wiring
+    document.getElementById('projSearch').addEventListener('input', e => {
+      filterSearch = (e.target.value || '').trim().toLowerCase();
+      applyFilters();
+    });
+    document.getElementById('projDue').addEventListener('change', e => {
+      filterDue = e.target.value;
+      applyFilters();
+    });
+    document.getElementById('projTabs').addEventListener('click', e => {
+      const tab = e.target.closest('.proj-tab');
+      if (!tab) return;
+      filterStatus = tab.dataset.status;
+      for (const t of document.querySelectorAll('.proj-tab')) t.classList.remove('is-active');
+      tab.classList.add('is-active');
+      applyFilters();
+    });
+
+    // ------------------------------------------------------------------
+    // Filtering
+    // ------------------------------------------------------------------
+    function dueBucket(project) {
+      if (!project.due_date) return 'none';
+      const d = new Date(project.due_date);
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const days = Math.round((d - today) / 86400000);
+      if (days < 0) return 'overdue';
+      if (days <= 7)  return 'week';
+      if (days <= 30) return 'month';
+      return 'future';
+    }
+
+    function matchesSearch(p, q) {
+      if (!q) return true;
+      return (p.name || '').toLowerCase().includes(q)
+          || (p.client_name  || '').toLowerCase().includes(q)
+          || (p.client_email || '').toLowerCase().includes(q)
+          || (p.description  || '').toLowerCase().includes(q);
+    }
+
+    function applyFilters() {
+      // Per-status counts respect the search + due filters (so the tabs
+      // show "if I switch to this tab, how many would I see?")
+      const counts = { all: 0, active: 0, completed: 0, archived: 0 };
+      const filtered = [];
+      for (const p of allProjects) {
+        if (!matchesSearch(p, filterSearch)) continue;
+        if (filterDue !== 'all' && dueBucket(p) !== filterDue) continue;
+        counts.all++;
+        counts[p.status] = (counts[p.status] || 0) + 1;
+        if (filterStatus === 'all' || p.status === filterStatus) filtered.push(p);
+      }
+      // Update tab badges
+      for (const el of document.querySelectorAll('.proj-tab-n')) {
+        el.textContent = counts[el.dataset.cnt] || 0;
+      }
+      renderTable(filtered, counts);
+    }
+
+    function renderTable(filtered, counts) {
+      const tableHost = document.getElementById('projTable');
+      const heading = document.getElementById('projCount');
+      const total = allProjects.length;
+      const visible = filtered.length;
+      const filtersActive = filterSearch !== '' || filterDue !== 'all' || filterStatus !== 'all';
+
+      // Heading: "X projetos" or "X de Y projetos" when filtered.
+      heading.textContent = filtersActive
+        ? `${visible} de ${total} ${total === 1 ? 'projeto' : 'projetos'}`
+        : `${total} ${total === 1 ? 'projeto' : 'projetos'}`;
+
+      if (allProjects.length === 0) {
+        tableHost.innerHTML = '<div class="empty"><div class="empty-title">Sem projetos ainda</div><div class="empty-sub">Crie um cliente primeiro em <a href="/admin/clientes.html">Clientes</a>, depois crie um projeto para esse cliente.</div></div>';
+        return;
+      }
+      if (filtered.length === 0) {
+        tableHost.innerHTML = '<div class="empty"><div class="empty-title">Nenhum projeto corresponde aos filtros</div><div class="empty-sub">Tente alargar a pesquisa, escolher outro estado ou limpar o filtro de prazo.</div></div>';
+        return;
+      }
+
+      tableHost.innerHTML = `<table class="table">
+        <thead><tr><th>Nome</th><th>Cliente</th><th>Prazo</th><th>€/h</th><th>Estado</th><th>Atualizado</th><th class="row-actions"></th></tr></thead>
+        <tbody>${filtered.map(p => {
+          const due = p.due_date
+            ? (() => { const d = new Date(p.due_date); const t = new Date(); t.setHours(0,0,0,0); const days = Math.round((d - t) / 86400000);
+                return `<span class="mono" style="font-size:.78rem${days < 0 ? ';color:var(--stamp);font-weight:500' : days <= 7 ? ';color:var(--amber)' : ''}">${d.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' })}${days < 0 ? ` · ${Math.abs(days)}d atrasado` : days === 0 ? ' · hoje' : days === 1 ? ' · amanhã' : ''}</span>`; })()
+            : '<span class="mono" style="font-size:.78rem;color:var(--graphite-60)">—</span>';
+          return `
+            <tr>
+              <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(p.id)}">${escapeHtml(p.name)}</a>${p.description ? `<small>${escapeHtml(p.description)}</small>` : ''}</td>
+              <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
+              <td>${due}</td>
+              <td>${p.hourly_rate != null ? `<span class="mono" style="font-size:.78rem">${Number(p.hourly_rate).toFixed(0)} €/h</span>` : '<span class="mono" style="color:var(--graphite-60);font-size:.78rem">—</span>'}</td>
+              <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
+              <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+              <td class="row-actions"><a class="btn sm primary" href="/admin/projeto.html?id=${encodeURIComponent(p.id)}">Abrir ›</a></td>
+            </tr>`;
+        }).join('')}</tbody>
+      </table>`;
+    }
+
+    // ------------------------------------------------------------------
+    // Initial load + refresh on create
+    // ------------------------------------------------------------------
+    async function loadProjects() {
+      const { projects } = await api.projects();
+      allProjects = projects;
+      applyFilters();
     }
 
     function openModal() {
       document.getElementById('form').reset();
       document.getElementById('err').style.display = 'none';
       document.getElementById('modalBack').classList.add('on');
-      // load clients
       api.clients().then(({ clients }) => {
         const sel = document.getElementById('clientSel');
         const active = clients.filter(c => c.status === 'active');
@@ -96,7 +219,18 @@
       try {
         await api.createProject(data.get('client_id'), data.get('name'), data.get('description'));
         closeModal();
-        await render();
+        // Switch to the "all" tab + clear other filters so the new project is
+        // visible immediately. (Most users want to see what they just made.)
+        filterSearch = '';
+        filterDue = 'all';
+        filterStatus = 'all';
+        document.getElementById('projSearch').value = '';
+        document.getElementById('projDue').value = 'all';
+        for (const t of document.querySelectorAll('.proj-tab')) t.classList.remove('is-active');
+        const allTab = document.querySelector('.proj-tab[data-status="all"]');
+        if (allTab) allTab.classList.add('is-active');
+        await loadProjects();
+        showToast('Projeto criado');
       } catch (err) {
         const el = document.getElementById('err');
         el.textContent = err.message; el.style.display = '';
@@ -105,7 +239,7 @@
       }
     });
 
-    safeRender(loading, render);
+    safeRender(loading, loadProjects);
   </script>
 </body>
 </html>

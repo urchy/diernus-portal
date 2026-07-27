@@ -1087,3 +1087,134 @@ h2 {
   display: inline-block; transition: transform .15s ease;
   font-size: 1rem; line-height: 1;
 }
+
+/* ==========================================================================
+   PROJECT FILTERS — search + status tabs + due-date select
+   ========================================================================== */
+.proj-filters {
+  display: flex; flex-direction: column; gap: .8rem;
+  margin: -.4rem 0 1.2rem;
+  padding: .9rem 1rem;
+  background: #fff; border: 1px solid var(--graphite-15); border-radius: 8px;
+}
+.proj-filters-row {
+  display: flex; gap: .55rem; flex-wrap: wrap; align-items: center;
+}
+.proj-search {
+  flex: 1; min-width: 200px;
+  font-family: var(--body); font-size: .9rem;
+  padding: .5rem .7rem; background: var(--bone);
+  border: 1px solid var(--graphite-15); border-radius: 5px;
+  color: var(--graphite);
+}
+.proj-search:focus { outline: none; border-color: var(--cobalt); background: #fff; }
+.proj-search::placeholder { color: var(--graphite-60); font-style: italic; }
+.proj-due-sel {
+  font-family: var(--mono); font-size: .68rem; letter-spacing: .08em;
+  padding: .45rem .6rem; background: var(--bone);
+  border: 1px solid var(--graphite-15); border-radius: 5px;
+  color: var(--graphite); cursor: pointer;
+}
+.proj-due-sel:focus { outline: none; border-color: var(--cobalt); }
+.proj-tabs {
+  display: flex; gap: .4rem; flex-wrap: wrap;
+}
+.proj-tab {
+  display: inline-flex; align-items: center; gap: .45rem;
+  font-family: var(--mono); font-size: .65rem; letter-spacing: .12em;
+  text-transform: uppercase; padding: .35rem .75rem;
+  border-radius: 999px;
+  background: var(--bone-2); border: 1px solid var(--graphite-15);
+  color: var(--graphite-60); cursor: pointer;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.proj-tab:hover { border-color: var(--cobalt); color: var(--cobalt); }
+.proj-tab.is-active {
+  background: var(--cobalt); color: #fff; border-color: var(--cobalt);
+}
+.proj-tab.is-active .proj-tab-n {
+  background: rgba(255, 255, 255, .2); color: #fff;
+}
+.proj-tab-n {
+  font-family: var(--mono); font-size: .58rem;
+  background: rgba(35, 33, 28, .08);
+  padding: 1px 7px; border-radius: 8px; min-width: 18px; text-align: center;
+  color: var(--graphite-60);
+}
+
+/* ==========================================================================
+   TIME ENTRY EDIT BUTTON
+   ========================================================================== */
+.cd-time-row {
+  /* was 60px 1fr auto 18px — now has 5 columns: hours | note | meta | edit | del */
+  grid-template-columns: 60px 1fr auto auto 18px;
+}
+.cd-time-edit {
+  background: none; border: 0; color: var(--graphite-60);
+  cursor: pointer; font-size: .85rem; padding: 0 .15rem;
+  line-height: 1;
+}
+.cd-time-edit:hover { color: var(--cobalt); }
+
+/* ==========================================================================
+   FILE PREVIEW — inline image thumb + PDF modal
+   ========================================================================== */
+.cd-file-preview {
+  background: none; border: 0; color: var(--graphite-60);
+  cursor: pointer; font-size: .95rem; padding: 0 .25rem;
+  line-height: 1;
+}
+.cd-file-preview:hover { color: var(--cobalt); }
+.cd-file-thumb-row {
+  display: flex; align-items: center; gap: .6rem;
+  background: var(--bone-2); border: 1px solid var(--graphite-15);
+  border-top: 0; border-radius: 0 0 5px 5px;
+  padding: .55rem .7rem; margin: -.35rem 0 .35rem;
+  margin-left: 36px; /* align under the filename, past the ext pill */
+}
+.cd-file-thumb-link {
+  display: flex; align-items: center; gap: .55rem;
+  text-decoration: none; color: inherit;
+  min-width: 0; max-width: 100%;
+}
+.cd-file-thumb-link:hover { text-decoration: none; }
+.cd-file-thumb {
+  max-width: 180px; max-height: 120px;
+  border-radius: 4px; border: 1px solid var(--graphite-15);
+  background: #fff; display: block; object-fit: contain;
+}
+.cd-file-thumb-name {
+  font-family: var(--mono); font-size: .7rem;
+  color: var(--graphite-60);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* Preview modal (PDF / large image) — full-screen overlay with the browser's
+   built-in PDF viewer or a centered image. */
+.preview-back {
+  position: fixed; inset: 0; background: rgba(35, 33, 28, .75);
+  display: flex; align-items: stretch; justify-content: center;
+  z-index: 80; padding: 2vh 2vw;
+}
+.preview-back[hidden] { display: none; }  /* keep [hidden] working — display:flex would otherwise override it */
+.preview-modal {
+  background: #fff; border-radius: 8px;
+  display: flex; flex-direction: column; width: 100%; max-width: 1200px;
+  max-height: 96vh; overflow: hidden;
+  box-shadow: 0 16px 48px -12px rgba(0, 0, 0, .5);
+}
+.preview-head {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: .8rem 1.1rem; border-bottom: 1px solid var(--graphite-15);
+  background: var(--bone);
+}
+.preview-title {
+  font-family: var(--mono); font-size: .8rem; letter-spacing: .04em;
+  color: var(--graphite); overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; min-width: 0; flex: 1;
+}
+.preview-actions { display: flex; align-items: center; gap: .4rem; flex-shrink: 0; }
+.preview-frame {
+  width: 100%; flex: 1; border: 0; background: var(--bone-2);
+  min-height: 60vh;
+}

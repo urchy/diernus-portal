@@ -80,6 +80,65 @@ timeRoutes.post('/cards/:id/time-entries', async (c) => {
   return c.json({ entry }, 201);
 });
 
+// PATCH /api/time-entries/:id — edit a time entry (hours and/or note).
+// Studio only (admin + team). Recomputes cards.actual_hours by the delta.
+timeRoutes.patch('/time-entries/:id', async (c) => {
+  const existing = await c.env.DB
+    .prepare('SELECT * FROM time_entries WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<any>();
+  if (!existing) return c.json({ error: 'registo não encontrado' }, 404);
+  const card = await c.env.DB
+    .prepare('SELECT project_id FROM cards WHERE id = ?')
+    .bind(existing.card_id)
+    .first<{ project_id: string }>();
+  if (!card || !await assertProjectAccess(c, card.project_id)) return c.json({ error: 'forbidden' }, 403);
+
+  const body = await c.req.json().catch(() => null) as { hours?: number; note?: string } | null;
+  if (!body) return c.json({ error: 'payload vazio' }, 400);
+
+  const sets: string[] = [];
+  const args: any[] = [];
+  if (body.hours !== undefined) {
+    const hours = Number(body.hours);
+    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
+      return c.json({ error: 'horas inválidas (0 < h ≤ 24)' }, 400);
+    }
+    sets.push('hours = ?');
+    args.push(hours);
+  }
+  if (body.note !== undefined) {
+    const note = (body.note || '').toString().trim().slice(0, 500) || null;
+    sets.push('note = ?');
+    args.push(note);
+  }
+  if (sets.length === 0) return c.json({ error: 'nada para atualizar' }, 400);
+
+  // Apply the change first
+  args.push(c.req.param('id'));
+  await c.env.DB.prepare(`UPDATE time_entries SET ${sets.join(', ')} WHERE id = ?`).bind(...args).run();
+
+  // If hours changed, shift the card's cached sum by the delta.
+  // (MAX(0, ...) guards against a faulty negative edit pushing the cache under 0.)
+  if (body.hours !== undefined) {
+    const delta = Number(body.hours) - Number(existing.hours);
+    if (delta !== 0) {
+      await c.env.DB
+        .prepare(`UPDATE cards SET actual_hours = MAX(0, COALESCE(actual_hours, 0) + ?), updated_at = datetime('now') WHERE id = ?`)
+        .bind(delta, existing.card_id)
+        .run();
+    }
+  }
+
+  const entry = await c.env.DB
+    .prepare(`SELECT t.*, u.name AS user_name
+              FROM time_entries t JOIN users u ON u.id = t.user_id
+              WHERE t.id = ?`)
+    .bind(c.req.param('id'))
+    .first<any>();
+  return c.json({ entry });
+});
+
 // DELETE /api/time-entries/:id — remove a time entry (and decrement the card's actual_hours)
 timeRoutes.delete('/time-entries/:id', async (c) => {
   const entry = await c.env.DB

@@ -92,6 +92,8 @@ export const api = {
     }),
   deleteTimeEntry: (id) =>
     request('/api/time-entries/' + encodeURIComponent(id), { method: 'DELETE' }),
+  updateTimeEntry: (id, patch) =>
+    request('/api/time-entries/' + encodeURIComponent(id), { method: 'PATCH', body: patch }),
 
   // Finance summary (studio only)
   financeSummary: (year, month) => {
@@ -136,4 +138,8 @@ export const api = {
   deleteFile: (fileId) =>
     request('/api/files/' + encodeURIComponent(fileId), { method: 'DELETE' }),
   fileDownloadUrl: (fileId) => API_BASE + '/api/files/' + encodeURIComponent(fileId),
+  // For in-browser preview (<img>, <iframe>): adds ?inline=1 so the Worker
+  // returns Content-Disposition: inline instead of attachment. The Worker
+  // also supports Range requests on this endpoint, so PDF viewers can stream.
+  filePreviewUrl: (fileId) => API_BASE + '/api/files/' + encodeURIComponent(fileId) + '?inline=1',
 };

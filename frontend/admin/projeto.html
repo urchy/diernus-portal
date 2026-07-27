@@ -15,9 +15,9 @@
 <body>
   <main id="app"></main>
   <script type="module">
-    import { renderLayout, escapeHtml } from '/shared/layout.js';
+    import { renderLayout, escapeHtml, showToast } from '/shared/layout.js';
     import { api } from '/shared/api.js';
-    import { mountBoard } from '/shared/board.js';
+    import { mountBoard, renderFileRow, openFilePreview } from '/shared/board.js';
     const { me, content } = await renderLayout({ active: 'projects', crumbs: ['Projetos', 'Detalhe'] });
     const id = new URLSearchParams(location.search).get('id');
     if (!id) {
@@ -64,13 +64,7 @@
         if (files.length === 0) {
           list.outerHTML = '<div class="project-files-empty">Sem ficheiros. Carregue PDFs, imagens ou 3D para partilhar com o cliente.</div>';
         } else {
-          list.innerHTML = files.map(f => `
-            <div class="cd-file">
-              <span class="cd-file-ext cd-file-ext-${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}">${(f.filename.split('.').pop()||'').toLowerCase().slice(0,4)}</span>
-              <a class="cd-file-name" href="${api.fileDownloadUrl(f.id)}" target="_blank" rel="noopener" download>${f.filename}</a>
-              <span class="cd-file-meta">${(f.size < 1048576 ? Math.max(1, Math.round(f.size/1024)) + ' KB' : (f.size/1048576).toFixed(1) + ' MB')} · ${f.uploader_name || ''}</span>
-              <button class="cd-file-del" data-file-del="${f.id}" title="Apagar">✕</button>
-            </div>`).join('');
+          list.innerHTML = files.map(f => renderFileRow(f, true)).join('');
         }
       } catch (e) {
         list.innerHTML = '<div class="error">' + e.message + '</div>';
@@ -94,6 +88,18 @@
         if (!confirm('Apagar este ficheiro?')) return;
         try { await api.deleteFile(b.dataset.fileDel); b.closest('.cd-file').remove(); }
         catch (err) { alert('Erro: ' + err.message); }
+      });
+      // preview (image thumb / PDF modal) — same pattern as the card detail panel
+      filesWrap.addEventListener('click', async e => {
+        const b = e.target.closest('button[data-file-preview]');
+        if (!b) return;
+        const fileId = b.dataset.filePreview;
+        // fetch the file metadata (the list endpoint already returned it, but
+        // we re-fetch to keep the handler stateless + resilient)
+        const allFiles = (await api.projectFiles(id)).files;
+        const file = allFiles.find(f => f.id === fileId);
+        if (!file) return;
+        await openFilePreview(file, b.closest('.cd-file'));
       });
     }
   </script>

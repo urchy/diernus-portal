@@ -176,7 +176,11 @@ fileRoutes.post('/projects/:id/files', async (c) => {
   return c.json({ file: record }, 201);
 });
 
-// GET /api/files/:id — download a file (streams from R2)
+// GET /api/files/:id — stream a file from R2.
+//   - default: Content-Disposition: attachment (forces download)
+//   - ?inline=1: Content-Disposition: inline (browser renders it: <img>, <iframe>)
+//   - Range header is honored so PDF viewers can stream pages without
+//     downloading the whole file in one go.
 fileRoutes.get('/files/:id', async (c) => {
   const file = await c.env.DB
     .prepare('SELECT * FROM files WHERE id = ?')
@@ -186,15 +190,57 @@ fileRoutes.get('/files/:id', async (c) => {
   const access = await assertProjectAccess(c, file.project_id);
   if (!access) return c.json({ error: 'forbidden' }, 403);
 
-  const obj = await c.env.FILES.get(file.r2_key);
-  if (!obj) return c.json({ error: 'ficheiro em falta no armazenamento' }, 404);
-  // filename* (RFC 5987) for non-ASCII
+  const inline = c.req.query('inline') === '1';
+  const contentType = file.mime_type || 'application/octet-stream';
+
+  // filename* (RFC 5987) for non-ASCII — included in both inline and
+  // attachment modes so the browser can suggest a save-as name.
   const ascii = file.filename.replace(/[^\x20-\x7E]/g, '_');
   const utf8 = encodeURIComponent(file.filename);
+
+  // ---- Range request handling (needed for PDF previews) ----
+  // We only support the standard "bytes=A-B" form. If absent, return the
+  // full body with 200. If present, fetch just the slice from R2 (it
+  // supports range natively) and return 206.
+  const rangeHeader = c.req.header('Range');
+  const totalSize = file.size;
+  let range: { offset: number; length: number } | null = null;
+  if (rangeHeader) {
+    const m = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader.trim());
+    if (m && (m[1] !== '' || m[2] !== '')) {
+      if (m[1] === '') {
+        // suffix: "bytes=-N" — last N bytes
+        const n = Math.min(Number(m[2]), totalSize);
+        range = { offset: Math.max(0, totalSize - n), length: n };
+      } else {
+        const start = Math.min(Number(m[1]), Math.max(0, totalSize - 1));
+        const end   = m[2] === '' ? totalSize - 1 : Math.min(Number(m[2]), totalSize - 1);
+        range = { offset: start, length: Math.max(0, end - start + 1) };
+      }
+    }
+  }
+
+  const r2Opts: R2GetOptions | undefined = range
+    ? { range: { offset: range.offset, length: range.length } }
+    : undefined;
+  const obj = await c.env.FILES.get(file.r2_key, r2Opts);
+  if (!obj) return c.json({ error: 'ficheiro em falta no armazenamento' }, 404);
+
   const headers = new Headers();
-  headers.set('Content-Type', file.mime_type || obj.httpMetadata?.contentType || 'application/octet-stream');
-  headers.set('Content-Disposition', `attachment; filename="${ascii}"; filename*=UTF-8''${utf8}`);
-  headers.set('Content-Length', String(file.size));
+  headers.set('Content-Type', contentType);
+  headers.set('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${ascii}"; filename*=UTF-8''${utf8}`);
+  headers.set('Accept-Ranges', 'bytes');
+  // Files are immutable (only created/deleted, never edited) — safe to
+  // cache them on the client. 1h is plenty for a session.
+  headers.set('Cache-Control', 'private, max-age=3600');
+
+  if (range) {
+    const end = range.offset + range.length - 1;
+    headers.set('Content-Range', `bytes ${range.offset}-${end}/${totalSize}`);
+    headers.set('Content-Length', String(range.length));
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers.set('Content-Length', String(totalSize));
   return new Response(obj.body, { headers });
 });
 
