@@ -1,7 +1,13 @@
 // shared/api.js — fetch wrapper for the Diernus Portal
 // Points at the deployed Worker (cross-origin Pages → Workers).
-
-const API_BASE = 'https://diernus-portal-api.silva-andre-daniel.workers.dev';
+// Reads the API base from a <meta name="api-base"> tag in <head> so the
+// staging → production cutover is a single line change in one place
+// (the meta tag in each page that does API calls).
+// Falls back to the hardcoded staging URL for safety.
+const META_BASE = (typeof document !== 'undefined')
+  ? document.querySelector('meta[name="api-base"]')?.getAttribute('content')
+  : null;
+const API_BASE = META_BASE || 'https://diernus-portal-api.silva-andre-daniel.workers.dev';
 
 async function request(path, options = {}) {
   const opts = {
