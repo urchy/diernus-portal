@@ -13,6 +13,43 @@ import { uuid } from './crypto.js';
 import { notifyClient } from './notifications.js';
 import { sendEmail, cardReviewEmail, projectCompletedEmail } from './resend.js';
 
+// ----------------------------------------------------------------------------
+// Card history helper
+// Every meaningful card mutation calls this once. The user_name is cached at
+// insert time so the frontend doesn't need a join to render the timeline.
+// ----------------------------------------------------------------------------
+async function logCardHistory(
+  env: Env,
+  args: {
+    cardId: string;
+    projectId: string;
+    user: User;
+    action: 'created' | 'moved' | 'assigned' | 'unassigned' | 'priority_changed' | 'renamed' | 'description_changed' | 'due_date_set' | 'due_date_cleared' | 'estimated_hours_changed' | 'deleted';
+    fromValue?: string | null;
+    toValue?: string | null;
+  }
+): Promise<void> {
+  try {
+    await env.DB
+      .prepare(`INSERT INTO card_history (id, card_id, project_id, user_id, user_name, action, from_value, to_value)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+      .bind(
+        uuid(),
+        args.cardId,
+        args.projectId,
+        args.user.id,
+        args.user.name || args.user.email,
+        args.action,
+        args.fromValue ?? null,
+        args.toValue ?? null,
+      )
+      .run();
+  } catch (e) {
+    // History is best-effort — never block the actual operation
+    console.error('[cards.ts] history insert failed:', (e as Error).message);
+  }
+}
+
 export const cardRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
 cardRoutes.use('*', requireAuth);
@@ -192,6 +229,11 @@ cardRoutes.post('/projects/:id/cards', requireStudio, async (c) => {
     )
     .run();
   const card = await c.env.DB.prepare('SELECT * FROM cards WHERE id = ?').bind(id).first<Card>();
+  // history: 'created' event
+  await logCardHistory(c.env, {
+    cardId: id, projectId: c.req.param('id'), user: me,
+    action: 'created', toValue: card!.title,
+  });
   // notify the client — a new card appeared on their project
   await notifyClient(c.env, {
     projectId: c.req.param('id'),
@@ -233,6 +275,64 @@ cardRoutes.patch('/cards/:id', requireStudio, async (c) => {
   args.push(c.req.param('id'));
   await c.env.DB.prepare(`UPDATE cards SET ${sets.join(', ')} WHERE id = ?`).bind(...args).run();
   const card = await c.env.DB.prepare('SELECT * FROM cards WHERE id = ?').bind(c.req.param('id')).first<Card>();
+
+  // History: one row per changed field. Keep it simple — record the
+  // from/to of each interesting field if the body touched it.
+  const me = c.get('user') as User;
+  if (body.title !== undefined && body.title !== existing.title) {
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: 'renamed', fromValue: existing.title, toValue: body.title,
+    });
+  }
+  if (body.description !== undefined && (body.description || '') !== (existing.description || '')) {
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: 'description_changed', fromValue: existing.description || '(vazio)', toValue: body.description || '(vazio)',
+    });
+  }
+  if (body.priority !== undefined && body.priority !== existing.priority) {
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: 'priority_changed', fromValue: existing.priority, toValue: body.priority,
+    });
+  }
+  if (body.due_date !== undefined && body.due_date !== existing.due_date) {
+    const wasCleared = existing.due_date && !body.due_date;
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: wasCleared ? 'due_date_cleared' : 'due_date_set',
+      fromValue: existing.due_date, toValue: body.due_date || null,
+    });
+  }
+  if (body.estimated_hours !== undefined && body.estimated_hours !== existing.estimated_hours) {
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: 'estimated_hours_changed',
+      fromValue: existing.estimated_hours != null ? `${existing.estimated_hours}h` : null,
+      toValue: body.estimated_hours != null ? `${body.estimated_hours}h` : null,
+    });
+  }
+  if (body.assignee_id !== undefined && body.assignee_id !== existing.assignee_id) {
+    const wasUnassigned = existing.assignee_id && !body.assignee_id;
+    const isUnassigned = !body.assignee_id;
+    // Look up the new assignee's name for the "to" value
+    let toName: string | null = null;
+    if (body.assignee_id) {
+      const a = await c.env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(body.assignee_id).first<{ name: string }>();
+      toName = a?.name || '(desconhecido)';
+    }
+    let fromName: string | null = null;
+    if (existing.assignee_id) {
+      const a = await c.env.DB.prepare('SELECT name FROM users WHERE id = ?').bind(existing.assignee_id).first<{ name: string }>();
+      fromName = a?.name || '(desconhecido)';
+    }
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: isUnassigned ? 'unassigned' : 'assigned',
+      fromValue: fromName, toValue: toName,
+    });
+  }
   return c.json({ card });
 });
 
@@ -282,6 +382,17 @@ cardRoutes.post('/cards/:id/move', requireStudio, async (c) => {
   const moved = existing.column_id !== body.column_id;
   if (moved) {
     const me = c.get('user') as User;
+    // history: 'moved' event with from/to column names (looks up source column name)
+    const srcCol = await c.env.DB
+      .prepare('SELECT name FROM columns WHERE id = ?')
+      .bind(existing.column_id)
+      .first<{ name: string }>();
+    await logCardHistory(c.env, {
+      cardId: existing.id, projectId: existing.project_id, user: me,
+      action: 'moved',
+      fromValue: srcCol?.name || '(desconhecida)',
+      toValue: targetCol.name,
+    });
     await notifyClient(c.env, {
       projectId: existing.project_id,
       type: 'card_moved',
@@ -410,6 +521,14 @@ cardRoutes.delete('/cards/:id', requireStudio, async (c) => {
   if (!existing) return c.json({ error: 'cartão não encontrado' }, 404);
   const access = await assertProjectAccess(c, existing.project_id);
   if (!access) return c.json({ error: 'forbidden' }, 403);
+  // History: record the deletion BEFORE the row is gone (history table
+  // has a CASCADE FK on card_id, so a record-after-delete would also work,
+  // but doing it first is cleaner and more reliable).
+  const me = c.get('user') as User;
+  await logCardHistory(c.env, {
+    cardId: existing.id, projectId: existing.project_id, user: me,
+    action: 'deleted', fromValue: existing.title, toValue: null,
+  });
   await c.env.DB.prepare('DELETE FROM cards WHERE id = ?').bind(c.req.param('id')).run();
   return c.json({ ok: true });
 });
@@ -435,4 +554,26 @@ cardRoutes.get('/cards/:id', async (c) => {
     .bind(c.req.param('id'))
     .all<any>();
   return c.json({ card, comments: comments.results, access });
+});
+
+// GET /api/cards/:id/history — full audit trail for one card
+// Reverse-chronological (newest first). Capped at 200 rows to keep the
+// response small. Both studio and client can read.
+cardRoutes.get('/cards/:id/history', async (c) => {
+  const card = await c.env.DB
+    .prepare('SELECT id, project_id FROM cards WHERE id = ?')
+    .bind(c.req.param('id'))
+    .first<{ id: string; project_id: string }>();
+  if (!card) return c.json({ error: 'cartão não encontrado' }, 404);
+  const access = await assertProjectAccess(c, card.project_id);
+  if (!access) return c.json({ error: 'forbidden' }, 403);
+  const rows = await c.env.DB
+    .prepare(`SELECT id, user_id, user_name, action, from_value, to_value, created_at
+              FROM card_history
+              WHERE card_id = ?
+              ORDER BY created_at DESC
+              LIMIT 200`)
+    .bind(c.req.param('id'))
+    .all<{ id: string; user_id: string | null; user_name: string; action: string; from_value: string | null; to_value: string | null; created_at: string }>();
+  return c.json({ history: rows.results });
 });

@@ -74,15 +74,24 @@
         ${members.length === 0
           ? '<div class="empty"><div class="empty-title">Ainda só você</div><div class="empty-sub">Convide outra pessoa para o estúdio para partilhar projetos e tempo.</div></div>'
           : `<table class="table">
-              <thead><tr><th>Nome</th><th>Email</th><th>Tipo</th><th>Último acesso</th></tr></thead>
-              <tbody>${members.map(m => `
+              <thead><tr><th>Nome</th><th>Email</th><th>Tipo</th><th>Último acesso</th><th></th></tr></thead>
+              <tbody>${members.map(m => {
+                const canEditRole = iAmAdmin && m.id !== me.id;  // can't change your own role
+                const roleCell = canEditRole
+                  ? `<select class="role-select" data-uid="${escapeHtml(m.id)}" data-current="${escapeHtml(m.role)}">
+                       <option value="team"${m.role === 'team' ? ' selected' : ''}>Equipa</option>
+                       <option value="admin"${m.role === 'admin' ? ' selected' : ''}>Admin</option>
+                     </select>`
+                  : rolePill(m.role);
+                return `
                 <tr>
                   <td class="name">${escapeHtml(m.name)}${m.id === me.id ? ' <span class="status-pill active" style="margin-left:.5rem">tu</span>' : ''}</td>
                   <td><span class="mono" style="font-size:.8rem">${escapeHtml(m.email)}</span></td>
-                  <td>${rolePill(m.role)}</td>
+                  <td>${roleCell}</td>
                   <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${m.last_seen_at ? timeAgo(m.last_seen_at) : 'nunca'}</span></td>
-                </tr>
-              `).join('')}</tbody>
+                  <td class="actions"></td>
+                </tr>`;
+              }).join('')}</tbody>
             </table>`}
 
         <h2 style="margin:1.6rem 0 .7rem">Convites pendentes</h2>
@@ -115,6 +124,29 @@
             if (r.warning) prompt('Email não enviado — copie este link para enviar manualmente:', r.invitation.accept_url);
             else alert('Convite reenviado para ' + email);
           } catch (e) { alert('Erro: ' + e.message); }
+        });
+      });
+      // role-change selects (admin only, and not on their own row)
+      content.querySelectorAll('select.role-select').forEach(sel => {
+        sel.addEventListener('change', async () => {
+          const newRole = sel.value;
+          const oldRole = sel.dataset.current;
+          const uid = sel.dataset.uid;
+          if (newRole === oldRole) return;
+          const verb = newRole === 'admin' ? 'promover a admin' : 'despromover para equipa';
+          if (!confirm(`Tem a certeza que quer ${verb} este membro?`)) {
+            sel.value = oldRole;  // revert the dropdown
+            return;
+          }
+          sel.disabled = true;
+          try {
+            await api.setMemberRole(uid, newRole);
+            await render();  // reload the page
+          } catch (e) {
+            alert('Erro: ' + e.message);
+            sel.value = oldRole;
+            sel.disabled = false;
+          }
         });
       });
     }

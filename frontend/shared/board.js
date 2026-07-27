@@ -232,14 +232,16 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
   overlay.className = 'card-detail-back on';
   const { card, comments } = await api.card(cardId);
   // fetch team members + files in parallel (both for studio; client still gets files)
-  const [teamRes, filesRes, timeRes] = await Promise.all([
+  const [teamRes, filesRes, timeRes, historyRes] = await Promise.all([
     canEdit ? api.teamMembers().catch(() => ({ members: [] })) : Promise.resolve({ members: [] }),
     api.cardFiles(projectId || card.project_id, cardId).catch(() => ({ files: [] })),
     canEdit ? api.timeEntries(cardId).catch(() => ({ entries: [] })) : Promise.resolve({ entries: [] }),
+    api.cardHistory(cardId).catch(() => ({ history: [] })),
   ]);
   const team = teamRes.members || [];
   const files = filesRes.files || [];
   const timeEntries = timeRes.entries || [];
+  const history = historyRes.history || [];
   overlay.innerHTML = `
     <div class="card-detail">
       <header class="card-detail-head">
@@ -340,6 +342,14 @@ export async function openCardDetail(cardId, canEdit, onChange, projectId) {
             <textarea name="body" placeholder="${canEdit ? 'Adicionar nota interna ou atualizar o cliente…' : 'Adicionar comentário…'}" rows="3" required></textarea>
             <button class="btn primary" type="submit" id="cmtSubmit">${canEdit ? 'Enviar comentário' : 'Comentar'}</button>
           </form>
+        </section>
+        <section class="cd-section">
+          <h3>Histórico${history.length > 0 ? ` (${history.length})` : ''}</h3>
+          <div class="cd-history">
+            ${history.length === 0
+              ? '<em style="color:var(--graphite-60);font-size:.85rem">Sem eventos registados.</em>'
+              : history.map(h => renderHistoryRow(h)).join('')}
+          </div>
         </section>
       </div>
     </div>
@@ -783,6 +793,35 @@ async function uploadAndAppend(file, projectId, cardId, container, status, onCha
     if (status) status.textContent = 'Erro: ' + err.message;
     setTimeout(() => { if (status) status.style.display = 'none'; }, 4000);
   }
+}
+
+// Human-readable label for each history action. The from/to values are
+// passed through for context (column names, priority levels, etc).
+function renderHistoryRow(h) {
+  const actor = h.user_name || '(removido)';
+  const when = timeAgo(h.created_at);
+  const from = h.from_value ? ` <span class="cd-h-from">${escapeHtml(h.from_value)}</span>` : '';
+  const to   = h.to_value   ? ` <span class="cd-h-to">${escapeHtml(h.to_value)}</span>`   : '';
+  const arrow = (from && to) ? ' <span class="cd-h-arrow">→</span>' : '';
+  const verb = ({
+    created:                'criou o cartão',
+    moved:                  'moveu o cartão',
+    assigned:               'atribuiu o cartão',
+    unassigned:             'removeu a atribuição',
+    priority_changed:       'mudou a prioridade',
+    renamed:                'renomeou o cartão',
+    description_changed:    'editou a descrição',
+    due_date_set:           'definiu um prazo',
+    due_date_cleared:       'removeu o prazo',
+    estimated_hours_changed:'ajustou a estimativa',
+    deleted:                'apagou o cartão',
+  })[h.action] || h.action;
+  return `
+    <div class="cd-h-row">
+      <span class="cd-h-actor">${escapeHtml(actor)}</span>
+      <span class="cd-h-verb">${verb}</span>${from}${arrow}${to}
+      <span class="cd-h-when">${when}</span>
+    </div>`;
 }
 
 function formatHours(h) {

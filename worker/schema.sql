@@ -195,3 +195,23 @@ CREATE TABLE IF NOT EXISTS files (
 );
 CREATE INDEX IF NOT EXISTS idx_files_project ON files(project_id);
 CREATE INDEX IF NOT EXISTS idx_files_card    ON files(card_id);
+
+-- =========================================================================
+-- card_history — audit trail of every meaningful change to a card
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS card_history (
+  id          TEXT PRIMARY KEY,
+  card_id     TEXT NOT NULL,
+  project_id  TEXT NOT NULL,
+  user_id     TEXT,                              -- nullable: a deletion actor can be soft-nulled
+  user_name   TEXT NOT NULL DEFAULT '',          -- cached at insert time for display
+  action      TEXT NOT NULL,                     -- 'created' | 'moved' | 'assigned' | 'unassigned' | 'priority_changed' | 'renamed' | 'description_changed' | 'due_date_set' | 'due_date_cleared' | 'estimated_hours_changed' | 'deleted'
+  from_value  TEXT,                              -- textual representation of the old state
+  to_value    TEXT,                              -- textual representation of the new state
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (card_id)    REFERENCES cards(id)    ON DELETE CASCADE,
+  FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id)    REFERENCES users(id)    ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_card_history_card    ON card_history(card_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_card_history_project ON card_history(project_id, created_at);

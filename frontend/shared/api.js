@@ -72,6 +72,7 @@ export const api = {
     request('/api/cards/' + encodeURIComponent(id) + '/move', { method: 'POST', body: { column_id, position } }),
   deleteCard: (id) => request('/api/cards/' + encodeURIComponent(id), { method: 'DELETE' }),
   card:       (id) => request('/api/cards/' + encodeURIComponent(id)),
+  cardHistory: (id) => request('/api/cards/' + encodeURIComponent(id) + '/history'),
 
   // Comments
   comments: (cardId) => request('/api/cards/' + encodeURIComponent(cardId) + '/comments'),
@@ -80,6 +81,7 @@ export const api = {
 
   // Team (assignable studio members)
   teamMembers: () => request('/api/team/members'),
+  setMemberRole: (id, role) => request('/api/team/members/' + encodeURIComponent(id) + '/role', { method: 'PATCH', body: { role } }),
 
   // Time entries (log hours against a card; studio only)
   timeEntries: (cardId) =>
