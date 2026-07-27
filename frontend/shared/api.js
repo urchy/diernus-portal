@@ -40,6 +40,12 @@ export const api = {
   me:    () => request('/api/auth/me'),
   login: (email, password) => request('/api/auth/login', { method: 'POST', body: { email, password } }),
   logout: () => request('/api/auth/logout', { method: 'POST' }),
+  // Profile self-edit (name + password + email change initiation).
+  // Returns { user, emailChange?, passwordChanged? }
+  updateMyProfile: (patch) => request('/api/auth/me', { method: 'PATCH', body: patch }),
+  // Confirm a pending email change. Token comes from the link sent to the
+  // NEW email address. Public route — no JWT required.
+  confirmEmailChange: (token) => request('/api/auth/email-change/confirm?token=' + encodeURIComponent(token)),
 
   // Clients (studio)
   clients:    () => request('/api/clients'),

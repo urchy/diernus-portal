@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Confirmar email · Diernus</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- API base: change ONE LINE at cutover (matches login.html). -->
+  <meta name="api-base" content="https://diernus-portal-api.diernus.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    import { api } from '/shared/api.js';
+
+    // Simple page — no layout, just a centred card with the result.
+    const app = document.getElementById('app');
+    const token = new URLSearchParams(location.search).get('token');
+    if (!token) {
+      renderError('Link inválido', 'Não foi possível encontrar o token de confirmação. Confirme que copiou o link completo do email.');
+    } else {
+      renderLoading();
+      // The confirm endpoint is public — it works without being logged in
+      // (in case the user opened the link on a different device).
+      try {
+        const res = await api.confirmEmailChange(token);
+        renderSuccess(res.newEmail);
+      } catch (err) {
+        renderError('Não foi possível confirmar', err.message);
+      }
+    }
+
+    function renderLoading() {
+      app.innerHTML = `
+        <div class="auth-shell">
+          <div class="auth-card">
+            <span class="eyebrow">Diernus</span>
+            <h1>A confirmar…</h1>
+            <p class="lede">Estamos a atualizar o email da sua conta.</p>
+            <div class="page-loading" style="padding:1rem 0">
+              <div class="spinner"></div>
+            </div>
+          </div>
+        </div>`;
+    }
+    function renderSuccess(newEmail) {
+      app.innerHTML = `
+        <div class="auth-shell">
+          <div class="auth-card">
+            <span class="eyebrow">Diernus</span>
+            <h1>Email atualizado</h1>
+            <p class="lede">A sua conta está agora associada a <b>${escapeHtml(newEmail)}</b>. Pode iniciar sessão com o novo email na próxima vez que precisar.</p>
+            <div style="display:flex;gap:.5rem;margin-top:1.4rem">
+              <a class="btn primary" href="/login.html" style="flex:1;justify-content:center">Ir para início de sessão</a>
+            </div>
+          </div>
+        </div>`;
+    }
+    function renderError(title, msg) {
+      app.innerHTML = `
+        <div class="auth-shell">
+          <div class="auth-card">
+            <span class="eyebrow" style="color:var(--stamp)">Diernus</span>
+            <h1>${escapeHtml(title)}</h1>
+            <p class="lede">${escapeHtml(msg)}</p>
+            <div class="error" style="margin-top:1rem">Se acha que isto é um erro, contacte o estúdio.</div>
+            <div style="display:flex;gap:.5rem;margin-top:1.2rem">
+              <a class="btn ghost" href="/login.html" style="flex:1;justify-content:center">Voltar ao início de sessão</a>
+            </div>
+          </div>
+        </div>`;
+    }
+    function escapeHtml(s) { return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+  </script>
+</body>
+</html>

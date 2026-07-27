@@ -32,6 +32,10 @@ export interface User {
   status: 'pending' | 'active' | 'suspended';
   created_at: string;
   last_seen_at: string | null;
+  // optional: selected by requireAuth (needed to validate "session is older
+  // than last password change"). Optional because most code paths don't
+  // select it — TS will fall back to undefined if not selected.
+  password_changed_at?: string | null;
 }
 
 export interface Project {

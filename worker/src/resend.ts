@@ -283,3 +283,40 @@ function escapeHtml(s: string): string {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 }
+
+// --- Email change confirmation ---
+// Sent to the NEW email address (not the old one) when a logged-in user
+// asks to change their email. Two-step verification: the email is only
+// updated when the recipient clicks the link. Until then, login still
+// works with the old email.
+export function emailChangeEmail(args: {
+  name: string;
+  newEmail: string;
+  confirmUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Confirme o seu novo email · Diernus`;
+  const body =
+`Recebemos um pedido para associar este email (<b>${escapeHtml(args.newEmail)}</b>) à sua conta no portal Diernus.<br><br>
+Se foi você, confirme abaixo. Se não foi, ignore este email — a sua conta mantém o email anterior e ninguém conseguirá fazer a alteração sem este clique.<br><br>
+Por segurança, este link expira em 24 horas.`;
+  const text =
+`Olá ${args.name},
+
+Recebemos um pedido para associar este email (${args.newEmail}) à sua conta no portal Diernus.
+
+Se foi você, confirme aqui:
+${args.confirmUrl}
+
+Se não foi você, ignore este email — a sua conta mantém o email anterior. O link expira em 24 horas.
+
+— Diernus`;
+  const html = shell({
+    eyebrow: 'DIERNUS · EMAIL',
+    heading: `Confirme o seu novo email`,
+    bodyHtml: body,
+    ctaText: 'CONFIRMAR EMAIL',
+    ctaUrl: args.confirmUrl,
+    footer: 'Enviado porque alguém pediu para alterar o email desta conta. Se não foi você, pode ignorar.',
+  });
+  return { subject, html, text };
+}

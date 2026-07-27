@@ -29,11 +29,12 @@ export async function signJwt(payload: { sub: string; role: 'admin' | 'team' | '
     .sign(secretKey(secret));
 }
 
-export async function verifyJwt(token: string, secret: string): Promise<{ sub: string; role: 'admin' | 'team' | 'client' } | null> {
+export async function verifyJwt(token: string, secret: string): Promise<{ sub: string; role: 'admin' | 'team' | 'client'; iat: number } | null> {
   try {
     const { payload } = await jwtVerify(token, secretKey(secret), { issuer: ISSUER });
     if (typeof payload.sub !== 'string' || (payload.role !== 'admin' && payload.role !== 'team' && payload.role !== 'client')) return null;
-    return { sub: payload.sub, role: payload.role };
+    if (typeof payload.iat !== 'number') return null;
+    return { sub: payload.sub, role: payload.role, iat: payload.iat };
   } catch {
     return null;
   }

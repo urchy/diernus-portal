@@ -51,10 +51,23 @@ export const requireAuth: MiddlewareHandler<{ Bindings: Env; Variables: AppVaria
   const payload = await verifyJwt(token, c.env.JWT_SECRET);
   if (!payload) return c.json({ error: 'unauthorized' }, 401);
   const user = await c.env.DB
-    .prepare('SELECT id, email, name, role, created_at, last_seen_at FROM users WHERE id = ?')
+    .prepare('SELECT id, email, name, role, status, created_at, last_seen_at, password_changed_at FROM users WHERE id = ?')
     .bind(payload.sub)
     .first<User>();
   if (!user) return c.json({ error: 'unauthorized' }, 401);
+  // Invalidate JWTs that were issued before the user's last password change.
+  // This is our "log out other devices" mechanism — we don't have
+  // server-side session storage, but we can compare the JWT's iat to the
+  // password_changed_at column and reject if the token is older.
+  if (user.password_changed_at) {
+    // SQLite's datetime('now') returns 'YYYY-MM-DD HH:MM:SS' in UTC, no 'Z'.
+    // Append Z + swap the space for T so Date.parse() reads it as UTC.
+    const changedMs = Date.parse(user.password_changed_at.replace(' ', 'T') + 'Z');
+    const iatMs = payload.iat * 1000;
+    if (Number.isFinite(changedMs) && changedMs > iatMs) {
+      return c.json({ error: 'sessão expirada — a sua palavra-passe foi alterada noutro dispositivo. Inicie sessão novamente.' }, 401);
+    }
+  }
   c.set('user', user);
   // touch last_seen_at (best-effort, no await)
   c.env.DB.prepare('UPDATE users SET last_seen_at = datetime("now") WHERE id = ?').bind(user.id).run().catch(() => {});

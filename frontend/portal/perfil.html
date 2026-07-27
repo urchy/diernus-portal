@@ -1,0 +1,188 @@
+<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="UTF-8">
+  <title>Perfil · Diernus Portal</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- API base: change ONE LINE at cutover (matches login.html). -->
+  <meta name="api-base" content="https://diernus-portal-api.diernus.com">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,100..900&family=IBM+Plex+Mono:wght@400;500&family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;1,6..72,400&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/shared/style.css">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+  <main id="app"></main>
+  <script type="module">
+    import { renderLayout, escapeHtml, showToast } from '/shared/layout.js';
+    import { api } from '/shared/api.js';
+    const { me, content } = await renderLayout({ active: 'profile', crumbs: ['Conta', 'Perfil'] });
+    const initial = (me.name || me.email).trim().charAt(0).toUpperCase();
+
+    content.innerHTML = `
+      <div class="page-head">
+        <div>
+          <span class="eyebrow">Conta</span>
+          <h1>Perfil</h1>
+          <p class="lede">Atualize o seu nome, email ou palavra-passe. As alterações entram em vigor imediatamente; a alteração de email é confirmada por um link enviado para a nova caixa.</p>
+        </div>
+        <div class="actions">
+          <div class="profile-avatar" title="${escapeHtml(me.name)}">${escapeHtml(initial)}</div>
+        </div>
+      </div>
+
+      <div class="profile-grid">
+        <!-- Nome -->
+        <section class="profile-card">
+          <h2>Nome</h2>
+          <p class="profile-hint">Como aparece no portal, nos comentários e nas notificações.</p>
+          <form id="nameForm" class="profile-form">
+            <label class="field"><label>Nome</label>
+              <input type="text" name="name" value="${escapeHtml(me.name)}" maxlength="200" required>
+            </label>
+            <div class="profile-actions">
+              <button type="submit" class="btn primary">Guardar nome</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Email -->
+        <section class="profile-card">
+          <h2>Email</h2>
+          <p class="profile-hint">Atual: <b>${escapeHtml(me.email)}</b>. Enviaremos um link de confirmação para a nova caixa — a alteração só se aplica quando o link for aberto.</p>
+          <form id="emailForm" class="profile-form">
+            <label class="field"><label>Novo email</label>
+              <input type="email" name="newEmail" placeholder="novo@exemplo.com" autocomplete="email" required>
+            </label>
+            <label class="field"><label>Palavra-passe atual (para confirmar)</label>
+              <input type="password" name="currentPassword" autocomplete="current-password" required>
+            </label>
+            <div class="profile-actions">
+              <button type="submit" class="btn primary">Enviar confirmação</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Palavra-passe -->
+        <section class="profile-card">
+          <h2>Palavra-passe</h2>
+          <p class="profile-hint">Mínimo 8 caracteres. Ao alterar, todas as outras sessões são terminadas — terá de iniciar sessão novamente nos outros dispositivos.</p>
+          <form id="pwForm" class="profile-form">
+            <label class="field"><label>Palavra-passe atual</label>
+              <input type="password" name="currentPassword" autocomplete="current-password" required>
+            </label>
+            <div class="row" style="display:grid;grid-template-columns:1fr 1fr;gap:.55rem">
+              <label class="field"><label>Nova palavra-passe</label>
+                <input type="password" name="newPassword" minlength="8" autocomplete="new-password" required>
+              </label>
+              <label class="field"><label>Confirmar</label>
+                <input type="password" name="confirmPassword" minlength="8" autocomplete="new-password" required>
+              </label>
+            </div>
+            <div class="profile-actions">
+              <button type="submit" class="btn primary">Alterar palavra-passe</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Conta info -->
+        <section class="profile-card profile-info">
+          <h2>Sobre a sua conta</h2>
+          <dl class="profile-dl">
+            <dt>Email atual</dt><dd>${escapeHtml(me.email)}</dd>
+            <dt>Nome</dt><dd>${escapeHtml(me.name)}</dd>
+            <dt>Tipo de acesso</dt><dd>${escapeHtml(me.role === 'admin' ? 'admin' : me.role === 'team' ? 'equipa' : 'cliente')}</dd>
+            <dt>Conta criada em</dt><dd>${escapeHtml(new Date(me.created_at).toLocaleDateString('pt-PT', { day: '2-digit', month: 'long', year: 'numeric' }))}</dd>
+          </dl>
+        </section>
+      </div>
+    `;
+
+    // ---- Nome ----
+    document.getElementById('nameForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const name = new FormData(e.target).get('name');
+      const submit = e.target.querySelector('button[type=submit]');
+      submit.disabled = true; submit.textContent = 'A guardar…';
+      try {
+        const { user } = await api.updateMyProfile({ name });
+        // The user.name we have in JS is stale; the layout (sidebar) shows
+        // the old name until reload. Easiest fix: reload — the layout
+        // re-fetches /me on every page.
+        showToast('Nome atualizado');
+        setTimeout(() => location.reload(), 600);
+      } catch (err) {
+        showToast(err.message, 'error');
+        submit.disabled = false; submit.textContent = 'Guardar nome';
+      }
+    });
+
+    // ---- Email ----
+    document.getElementById('emailForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const newEmail = fd.get('newEmail');
+      const currentPassword = fd.get('currentPassword');
+      const submit = e.target.querySelector('button[type=submit]');
+      submit.disabled = true; submit.textContent = 'A enviar…';
+      try {
+        const { emailChange } = await api.updateMyProfile({ newEmail, currentPassword });
+        if (emailChange) {
+          // Show a more informative toast — they need to check the NEW inbox
+          const t = document.createElement('div');
+          t.className = 'toast on';
+          t.style.maxWidth = '420px';
+          t.innerHTML = `Enviámos um link de confirmação para <b>${escapeHtml(emailChange.newEmail)}</b>. Abra-o para concluir a alteração.`;
+          document.body.appendChild(t);
+          setTimeout(() => t.remove(), 6000);
+        } else {
+          showToast('Email atualizado');
+        }
+        e.target.reset();
+      } catch (err) {
+        showToast(err.message, 'error');
+      } finally {
+        submit.disabled = false; submit.textContent = 'Enviar confirmação';
+      }
+    });
+
+    // ---- Palavra-passe ----
+    document.getElementById('pwForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const fd = new FormData(e.target);
+      const currentPassword = fd.get('currentPassword');
+      const newPassword = fd.get('newPassword');
+      const confirmPassword = fd.get('confirmPassword');
+      if (newPassword !== confirmPassword) {
+        showToast('A confirmação não coincide com a nova palavra-passe', 'error');
+        return;
+      }
+      const submit = e.target.querySelector('button[type=submit]');
+      submit.disabled = true; submit.textContent = 'A guardar…';
+      try {
+        const { passwordChanged } = await api.updateMyProfile({ currentPassword, newPassword });
+        e.target.reset();
+        if (passwordChanged) {
+          // The current JWT is now invalid (password_changed_at > iat). The
+          // next request will 401 and bounce to /login. We tell the user
+          // and trigger the bounce manually so the UX is consistent.
+          const t = document.createElement('div');
+          t.className = 'toast on';
+          t.style.maxWidth = '420px';
+          t.innerHTML = 'Palavra-passe alterada. As outras sessões foram terminadas — vai ser redirecionado para iniciar sessão novamente.';
+          document.body.appendChild(t);
+          setTimeout(() => {
+            api.logout().finally(() => location.replace('/login.html?reason=password_changed'));
+          }, 2000);
+        } else {
+          showToast('Palavra-passe atualizada');
+        }
+      } catch (err) {
+        showToast(err.message, 'error');
+        submit.disabled = false; submit.textContent = 'Alterar palavra-passe';
+      }
+    });
+  </script>
+</body>
+</html>

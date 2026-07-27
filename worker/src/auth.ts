@@ -3,6 +3,7 @@ import { Hono } from 'hono';
 import type { AppVariables, Env, User, Invitation } from './types.js';
 import { hashPassword, verifyPassword, signJwt, uuid, randomToken } from './crypto.js';
 import { setSessionCookie, clearSessionCookie, requireAuth } from './middleware.js';
+import { sendEmail, emailChangeEmail } from './resend.js';
 
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -37,6 +38,164 @@ authRoutes.post('/logout', async (c) => {
 authRoutes.get('/me', requireAuth, async (c) => {
   const u = c.get('user');
   return c.json({ user: u });
+});
+
+// =========================================================================
+// Profile self-edit (PATCH /api/auth/me)
+// =========================================================================
+// Any authenticated user can:
+//   - update their own name           (immediate, no confirmation)
+//   - update their own password       (requires current password; invalidates other sessions via password_changed_at)
+//   - change their email              (two-step: sends a confirmation link to the NEW address)
+// Body: { name?, currentPassword?, newPassword?, newEmail? }
+//
+// Email change is two-step by design — the email is only applied when the
+// recipient clicks the link sent to the NEW address. Until then, login
+// still works with the old email. This prevents a stolen session from
+// being used to silently take over an account.
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+authRoutes.patch('/me', requireAuth, async (c) => {
+  const me = c.get('user') as User;
+  const body = await c.req.json().catch(() => null) as {
+    name?: string;
+    currentPassword?: string;
+    newPassword?: string;
+    newEmail?: string;
+  } | null;
+  if (!body) return c.json({ error: 'payload vazio' }, 400);
+
+  // We need the current password_hash for password / email verification.
+  // Re-load it (the user attached to the context doesn't have it).
+  const current = await c.env.DB
+    .prepare('SELECT id, email, password_hash, name, role, status, created_at, last_seen_at FROM users WHERE id = ?')
+    .bind(me.id)
+    .first<User & { password_hash: string | null }>();
+  if (!current) return c.json({ error: 'utilizador não encontrado' }, 404);
+
+  const updates: string[] = [];
+  const args: unknown[] = [];
+  let emailChangeRequested: { newEmail: string; token: string } | null = null;
+
+  // ---- Name ----
+  if (body.name !== undefined) {
+    const name = (body.name || '').trim().slice(0, 200);
+    if (!name) return c.json({ error: 'nome inválido' }, 400);
+    updates.push('name = ?');
+    args.push(name);
+  }
+
+  // ---- Password ----
+  if (body.newPassword !== undefined) {
+    if (!body.currentPassword) return c.json({ error: 'precisa da palavra-passe atual para a alterar' }, 400);
+    if (!current.password_hash) return c.json({ error: 'não foi possível verificar a palavra-passe atual' }, 400);
+    const ok = await verifyPassword(body.currentPassword, current.password_hash);
+    if (!ok) return c.json({ error: 'palavra-passe atual incorreta' }, 403);
+    const np = body.newPassword || '';
+    if (np.length < 8) return c.json({ error: 'a nova palavra-passe tem de ter pelo menos 8 caracteres' }, 400);
+    if (np === body.currentPassword) return c.json({ error: 'a nova palavra-passe é igual à atual' }, 400);
+    const hash = await hashPassword(np);
+    updates.push("password_hash = ?", "password_changed_at = datetime('now')");
+    args.push(hash);
+  }
+
+  // ---- Email change (initiate; only applied after the link is clicked) ----
+  if (body.newEmail !== undefined) {
+    if (!body.currentPassword) return c.json({ error: 'precisa da palavra-passe atual para alterar o email' }, 400);
+    if (!current.password_hash) return c.json({ error: 'não foi possível verificar a palavra-passe atual' }, 400);
+    const ok = await verifyPassword(body.currentPassword, current.password_hash);
+    if (!ok) return c.json({ error: 'palavra-passe atual incorreta' }, 403);
+    const newEmail = (body.newEmail || '').toLowerCase().trim();
+    if (!EMAIL_RE.test(newEmail)) return c.json({ error: 'email inválido' }, 400);
+    if (newEmail === current.email) return c.json({ error: 'o email novo é igual ao atual' }, 400);
+    const collision = await c.env.DB
+      .prepare('SELECT id FROM users WHERE email = ? AND id != ?')
+      .bind(newEmail, me.id)
+      .first<{ id: string }>();
+    if (collision) return c.json({ error: 'este email já está associado a outra conta' }, 409);
+    // Cancel any prior pending change for this user + create a new one
+    const token = randomToken(32);
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().replace('T', ' ').slice(0, 19);
+    const id = uuid();
+    await c.env.DB.batch([
+      c.env.DB.prepare("UPDATE email_changes SET accepted_at = datetime('now') WHERE user_id = ? AND accepted_at IS NULL").bind(me.id),
+      c.env.DB.prepare("INSERT INTO email_changes (id, user_id, new_email, token, expires_at) VALUES (?, ?, ?, ?, ?)")
+        .bind(id, me.id, newEmail, token, expiresAt),
+    ]);
+    emailChangeRequested = { newEmail, token };
+  }
+
+  if (updates.length === 0 && !emailChangeRequested) {
+    return c.json({ error: 'nada para atualizar' }, 400);
+  }
+
+  if (updates.length > 0) {
+    args.push(me.id);
+    await c.env.DB.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).bind(...args).run();
+  }
+
+  // Re-read the user so the response reflects any name change
+  const updated = await c.env.DB
+    .prepare('SELECT id, email, name, role, status, created_at, last_seen_at FROM users WHERE id = ?')
+    .bind(me.id)
+    .first<User>();
+
+  // Fire-and-forget the confirmation email (never block the response)
+  if (emailChangeRequested && updated) {
+    const confirmUrl = `${c.env.PUBLIC_URL}/confirmar-email.html?token=${encodeURIComponent(emailChangeRequested.token)}`;
+    const tpl = emailChangeEmail({
+      name: updated.name,
+      newEmail: emailChangeRequested.newEmail,
+      confirmUrl,
+    });
+    c.executionCtx.waitUntil(
+      sendEmail(c.env, { to: emailChangeRequested.newEmail, ...tpl })
+        .catch(err => console.error(`[auth.ts] email change to ${emailChangeRequested.newEmail} failed:`, err.message))
+    );
+  }
+
+  return c.json({
+    user: updated,
+    // when an email change was initiated, tell the frontend so it can
+    // show a "check your new inbox" toast instead of a generic success
+    emailChange: emailChangeRequested
+      ? { newEmail: emailChangeRequested.newEmail, expiresInHours: 24 }
+      : undefined,
+    // signal that the password was changed so the frontend can tell the
+    // user they'll be logged out on the next page load
+    passwordChanged: body.newPassword !== undefined,
+  });
+});
+
+// GET /api/auth/email-change/confirm?token=...  (public — no JWT)
+// Validates the token, applies the email change, marks the request used.
+authRoutes.get('/email-change/confirm', async (c) => {
+  const token = c.req.query('token');
+  if (!token) return c.json({ error: 'token em falta' }, 400);
+  const row = await c.env.DB
+    .prepare('SELECT id, user_id, new_email, expires_at, accepted_at FROM email_changes WHERE token = ?')
+    .bind(token)
+    .first<{ id: string; user_id: string; new_email: string; expires_at: string; accepted_at: string | null }>();
+  if (!row) return c.json({ error: 'pedido não encontrado' }, 404);
+  if (row.accepted_at) return c.json({ error: 'este pedido já foi utilizado' }, 410);
+  if (new Date(row.expires_at) < new Date()) return c.json({ error: 'pedido expirado' }, 410);
+
+  // Re-check that the new email isn't taken in the meantime
+  const collision = await c.env.DB
+    .prepare('SELECT id FROM users WHERE email = ? AND id != ?')
+    .bind(row.new_email, row.user_id)
+    .first<{ id: string }>();
+  if (collision) return c.json({ error: 'este email já está associado a outra conta' }, 409);
+
+  await c.env.DB.batch([
+    c.env.DB.prepare("UPDATE users SET email = ? WHERE id = ?").bind(row.new_email, row.user_id),
+    c.env.DB.prepare("UPDATE email_changes SET accepted_at = datetime('now') WHERE id = ?").bind(row.id),
+    // Cancel any other pending change for the same user
+    c.env.DB.prepare("UPDATE email_changes SET accepted_at = datetime('now') WHERE user_id = ? AND id != ? AND accepted_at IS NULL")
+      .bind(row.user_id, row.id),
+  ]);
+  return c.json({ ok: true, newEmail: row.new_email });
 });
 
 // GET /api/auth/invite/:token — lookup an invitation (public, doesn't reveal the token hash)

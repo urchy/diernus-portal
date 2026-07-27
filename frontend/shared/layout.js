@@ -11,6 +11,7 @@ const ICON = {
   team:     '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="6" cy="6" r="2"/><circle cx="12" cy="6" r="2"/><path d="M2 14c0-2 1.6-3.5 4-3.5M14 14c0-2-1.6-3.5-4-3.5"/></svg>',
   finance:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2 13h12M3 10l3-3 3 2 4-5M11 4h2v2"/></svg>',
   invites:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="4" width="12" height="9" rx="1"/><path d="M2 4l6 5 6-5"/></svg>',
+  profile:  '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M3 14c0-2.8 2.2-5 5-5s5 2.2 5 5"/></svg>',
   bell:     '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3.5 12h9M5 12V8a3 3 0 016 0v4M8 4V3M5 5L4 4M11 5l1-1"/></svg>',
   logout:   '<svg class="icon" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3H3v10h3M10 5l3 3-3 3M13 8H6"/></svg>',
 };
@@ -54,6 +55,9 @@ const NAV_BASE = {
     ]},
     { group: 'PROJETOS', items: [
       { key: 'projects', label: 'Meus projetos', href: '/portal/' },
+    ]},
+    { group: 'CONTA', items: [
+      { key: 'profile', label: 'Perfil', href: '/portal/perfil.html' },
     ]},
   ],
 };

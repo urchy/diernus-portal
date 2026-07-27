@@ -1218,3 +1218,47 @@ h2 {
   width: 100%; flex: 1; border: 0; background: var(--bone-2);
   min-height: 60vh;
 }
+
+/* ==========================================================================
+   PROFILE PAGE (portal/perfil.html) — three side-by-side cards
+   ========================================================================== */
+.profile-avatar {
+  width: 48px; height: 48px; border-radius: 50%;
+  background: var(--cobalt); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: 1.4rem;
+}
+.profile-grid {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;
+}
+@media (max-width: 760px) {
+  .profile-grid { grid-template-columns: 1fr; }
+}
+.profile-card {
+  background: #fff; border: 1px solid var(--graphite-15);
+  border-radius: 8px; padding: 1.2rem 1.3rem;
+}
+.profile-card h2 {
+  font-family: var(--display); font-variation-settings: "wdth" 70, "wght" 800;
+  font-size: 1rem; text-transform: uppercase; letter-spacing: .04em;
+  margin: 0 0 .25rem;
+}
+.profile-hint {
+  font-size: .85rem; color: var(--graphite-60); font-style: italic;
+  margin: 0 0 1rem; line-height: 1.5;
+}
+.profile-form { display: flex; flex-direction: column; gap: 0; }
+.profile-form .field { margin-bottom: .8rem; }
+.profile-actions { display: flex; justify-content: flex-end; margin-top: .25rem; }
+.profile-info { background: var(--bone-2); }
+.profile-dl {
+  display: grid; grid-template-columns: max-content 1fr; gap: .35rem 1rem;
+  font-size: .88rem; margin: 0;
+}
+.profile-dl dt {
+  font-family: var(--mono); font-size: .65rem; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--graphite-60);
+  align-self: center;
+}
+.profile-dl dd { margin: 0; color: var(--graphite); }

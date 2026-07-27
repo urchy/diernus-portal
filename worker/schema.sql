@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS users (
   role            TEXT NOT NULL CHECK (role IN ('admin', 'team', 'client')),
   status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'suspended')),
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  last_seen_at    TEXT
+  last_seen_at    TEXT,
+  password_changed_at TEXT                                    -- set whenever the user changes their password; JWTs older than this are rejected
 );
 CREATE INDEX IF NOT EXISTS idx_users_role   ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
@@ -62,6 +63,27 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 -- Idempotent: SQLite will fail these if already applied; the schema script
 -- ignores those errors when run with `wrangler d1 execute` --command.
 ALTER TABLE projects ADD COLUMN due_date TEXT;
+ALTER TABLE users ADD COLUMN password_changed_at TEXT;
+
+-- =========================================================================
+-- email_changes — two-step email change confirmation
+-- User submits a new email → we send a one-time link to the NEW address.
+-- Old email stays active until they click the link. The most recent
+-- pending row for a user is the one that matters (older pending rows
+-- get marked accepted_at on replacement so they can't be reused).
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS email_changes (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  new_email   TEXT NOT NULL,
+  token       TEXT UNIQUE NOT NULL,
+  expires_at  TEXT NOT NULL,
+  accepted_at TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_email_changes_token ON email_changes(token);
+CREATE INDEX IF NOT EXISTS idx_email_changes_user  ON email_changes(user_id, accepted_at);
 
 -- =========================================================================
 -- columns — kanban columns per project (default 3 seeded on project create)
