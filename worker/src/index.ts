@@ -15,6 +15,7 @@ import { timeRoutes } from './time.js';
 import { financeRoutes } from './finance.js';
 import { notificationRoutes } from './notifications.js';
 import { invoiceRoutes } from './invoices.js';
+import { contactRoutes } from './contact.js';
 import { handleScheduled } from './cron.js';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
@@ -22,11 +23,17 @@ const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 // CORS — allow the Pages frontend to call the Worker.
 // In production the frontend lives on portal.diernus.com and we don't
 // actually need CORS (same origin). During dev (Pages on .pages.dev,
-// worker on .workers.dev) we allow the Pages origin.
+// worker on .workers.dev) we allow the Pages origin. The marketing site
+// at https://diernus.com also posts to /api/contact for the lead form.
 app.use('*', async (c, next) => {
   const allowed =
     c.env.ENVIRONMENT === 'production'
-      ? [c.env.PUBLIC_URL, 'https://diernus-portal.pages.dev', 'https://diernus.pages.dev']
+      ? [
+          c.env.PUBLIC_URL,
+          'https://diernus.com',
+          'https://diernus-portal.pages.dev',
+          'https://diernus.pages.dev',
+        ]
       : ['*'];
   const corsMiddleware = cors({
     origin: (origin) => allowed.includes('*') || allowed.includes(origin) ? origin : allowed[0],
@@ -49,6 +56,7 @@ app.route('/api/clients', clientRoutes);
 app.route('/api/finance', financeRoutes);
 app.route('/api/notifications', notificationRoutes);
 app.route('/api/invoices', invoiceRoutes);
+app.route('/api/contact', contactRoutes);  // public lead form (diernus.com)
 app.route('/api', cardRoutes);       // /api/projects/:id/board, /api/cards/:id, etc.
 app.route('/api', commentRoutes);    // /api/cards/:cardId/comments
 app.route('/api', fileRoutes);       // /api/projects/:id/files, /api/files/:id

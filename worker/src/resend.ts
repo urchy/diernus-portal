@@ -21,6 +21,7 @@ interface SendArgs {
   subject: string;
   html: string;
   text: string;
+  replyTo?: string;  // optional Reply-To header so studio can hit Reply on a contact form email
 }
 
 export async function sendEmail(env: EmailEnv, args: SendArgs): Promise<void> {
@@ -36,6 +37,7 @@ export async function sendEmail(env: EmailEnv, args: SendArgs): Promise<void> {
       subject: args.subject,
       html: args.html,
       text: args.text,
+      ...(args.replyTo ? { reply_to: args.replyTo } : {}),
     }),
   });
   if (!res.ok) {
