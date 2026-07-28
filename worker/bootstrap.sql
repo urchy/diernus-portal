@@ -1,27 +1,33 @@
--- Diernus Portal — schema (D1 / SQLite)
+-- Diernus Portal — bootstrap (fresh D1, no migrations)
 -- Idempotent: safe to re-run.
+--
+-- Use this when creating a NEW D1 database (e.g. a staging environment).
+-- For existing production DBs, use schema.sql + migrations/*.sql instead.
+-- schema.sql contains both CREATE TABLE and ALTER TABLE statements; the
+-- ALTER TABLEs exist for databases that were created before the columns
+-- were added, so they fail on a brand-new D1. bootstrap.sql omits them.
 
 PRAGMA foreign_keys = ON;
 
 -- =========================================================================
--- users — studio team + clients
+-- users
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS users (
   id              TEXT PRIMARY KEY,
   email           TEXT UNIQUE NOT NULL,
-  password_hash   TEXT,                                       -- nullable: pending clients have no password yet
+  password_hash   TEXT,
   name            TEXT NOT NULL,
   role            TEXT NOT NULL CHECK (role IN ('admin', 'team', 'client')),
   status          TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'active', 'suspended')),
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   last_seen_at    TEXT,
-  password_changed_at TEXT                                    -- set whenever the user changes their password; JWTs older than this are rejected
+  password_changed_at TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_users_role   ON users(role);
 CREATE INDEX IF NOT EXISTS idx_users_status ON users(status);
 
 -- =========================================================================
--- invitations — both clients and studio team members
+-- invitations (with the new CASCADE FK on email)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS invitations (
   id              TEXT PRIMARY KEY,
@@ -33,8 +39,6 @@ CREATE TABLE IF NOT EXISTS invitations (
   expires_at      TEXT NOT NULL,
   accepted_at     TEXT,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
-  -- ON DELETE CASCADE on both FKs so deleting a user (or the inviter)
-  -- properly cleans up the invitation.
   FOREIGN KEY (email)      REFERENCES users(email) ON DELETE CASCADE,
   FOREIGN KEY (invited_by) REFERENCES users(id)   ON DELETE CASCADE
 );
@@ -42,7 +46,7 @@ CREATE INDEX IF NOT EXISTS idx_invitations_token ON invitations(token);
 CREATE INDEX IF NOT EXISTS idx_invitations_email ON invitations(email);
 
 -- =========================================================================
--- projects — one per client engagement (client can have many)
+-- projects
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS projects (
   id              TEXT PRIMARY KEY,
@@ -50,9 +54,9 @@ CREATE TABLE IF NOT EXISTS projects (
   name            TEXT NOT NULL,
   description     TEXT,
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'completed', 'archived')),
-  hourly_rate     REAL,                                        -- €/hour agreed with the client
-  budget_hours    REAL,                                        -- optional total hours budget
-  due_date        TEXT,                                        -- project-level deadline (date only, ISO yyyy-mm-dd)
+  hourly_rate     REAL,
+  budget_hours    REAL,
+  due_date        TEXT,
   created_by      TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -62,34 +66,8 @@ CREATE TABLE IF NOT EXISTS projects (
 CREATE INDEX IF NOT EXISTS idx_projects_client ON projects(client_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 
--- migrations for existing DBs (CREATE TABLE doesn't add columns retroactively)
--- Idempotent: SQLite will fail these if already applied; the schema script
--- ignores those errors when run with `wrangler d1 execute` --command.
-ALTER TABLE projects ADD COLUMN due_date TEXT;
-ALTER TABLE users ADD COLUMN password_changed_at TEXT;
-
 -- =========================================================================
--- email_changes — two-step email change confirmation
--- User submits a new email → we send a one-time link to the NEW address.
--- Old email stays active until they click the link. The most recent
--- pending row for a user is the one that matters (older pending rows
--- get marked accepted_at on replacement so they can't be reused).
--- =========================================================================
-CREATE TABLE IF NOT EXISTS email_changes (
-  id          TEXT PRIMARY KEY,
-  user_id     TEXT NOT NULL,
-  new_email   TEXT NOT NULL,
-  token       TEXT UNIQUE NOT NULL,
-  expires_at  TEXT NOT NULL,
-  accepted_at TEXT,
-  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
-  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_email_changes_token ON email_changes(token);
-CREATE INDEX IF NOT EXISTS idx_email_changes_user  ON email_changes(user_id, accepted_at);
-
--- =========================================================================
--- columns — kanban columns per project (default 3 seeded on project create)
+-- columns (kanban per project; default 4 seeded on project create)
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS columns (
   id              TEXT PRIMARY KEY,
@@ -100,24 +78,8 @@ CREATE TABLE IF NOT EXISTS columns (
 );
 CREATE INDEX IF NOT EXISTS idx_columns_project ON columns(project_id, position);
 
--- One-time migration: add "Revisão" column to every existing project that
--- doesn't have it. Idempotent (skips if the project already has a Revisão
--- column, e.g. because it was created after this migration ran).
--- Position 2560 sits between Em Curso (2048) and Concluído (3072).
--- UUID v4-ish: 4-char-2-char-4-2-6-char random hex, matches our uuid() helper.
-INSERT INTO columns (id, project_id, name, position)
-  SELECT lower(hex(randomblob(4))) || '-' || lower(hex(randomblob(2))) || '-4' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(2))) || '-' || lower(hex(randomblob(6))),
-         p.id,
-         'Revisão',
-         2560
-  FROM projects p
-  WHERE NOT EXISTS (
-    SELECT 1 FROM columns k
-    WHERE k.project_id = p.id AND LOWER(k.name) IN ('revisão', 'revisao')
-  );
-
 -- =========================================================================
--- cards — kanban cards
+-- cards
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS cards (
   id              TEXT PRIMARY KEY,
@@ -128,9 +90,9 @@ CREATE TABLE IF NOT EXISTS cards (
   position        INTEGER NOT NULL,
   priority        TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low', 'medium', 'high')),
   due_date        TEXT,
-  estimated_hours REAL,                                        -- how many hours the studio estimates for this card
-  actual_hours    REAL NOT NULL DEFAULT 0,                     -- how many hours were actually spent (incremented by the studio)
-  assignee_id     TEXT,                                        -- studio member assigned to this card (optional)
+  estimated_hours REAL,
+  actual_hours    REAL NOT NULL DEFAULT 0,
+  assignee_id     TEXT,
   created_by      TEXT NOT NULL,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at      TEXT NOT NULL DEFAULT (datetime('now')),
@@ -144,7 +106,7 @@ CREATE INDEX IF NOT EXISTS idx_cards_column   ON cards(column_id, position);
 CREATE INDEX IF NOT EXISTS idx_cards_assignee ON cards(assignee_id);
 
 -- =========================================================================
--- comments — on cards (studio + client both can post)
+-- comments
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS comments (
   id              TEXT PRIMARY KEY,
@@ -158,9 +120,7 @@ CREATE TABLE IF NOT EXISTS comments (
 CREATE INDEX IF NOT EXISTS idx_comments_card ON comments(card_id, created_at);
 
 -- =========================================================================
--- time_entries — hours logged against a card (studio only)
--- Each row is an "I spent X hours on this card" entry; cards.actual_hours
--- is the cached sum of all entries for that card.
+-- time_entries
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS time_entries (
   id              TEXT PRIMARY KEY,
@@ -177,23 +137,19 @@ CREATE INDEX IF NOT EXISTS idx_time_entries_user  ON time_entries(user_id, logge
 CREATE INDEX IF NOT EXISTS idx_time_entries_logged ON time_entries(logged_at);
 
 -- =========================================================================
--- notifications — in-app bell for the studio
--- Populated when a client posts a comment or uploads a file, so the
--- studio can react. One row per recipient (so a client action notifies
--- every active studio user). ref_kind + ref_id let the UI link straight
--- back to the card / project.
+-- notifications
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS notifications (
   id              TEXT PRIMARY KEY,
-  user_id         TEXT NOT NULL,                              -- studio recipient
-  type            TEXT NOT NULL,                              -- 'client_comment' | 'client_file' (extensible)
-  ref_kind        TEXT NOT NULL,                              -- 'card' | 'project'
-  ref_id          TEXT NOT NULL,                              -- card_id or project_id
-  actor_id        TEXT,                                       -- who triggered it (the client)
-  actor_name      TEXT,                                       -- cached for fast list rendering
-  message         TEXT NOT NULL,                              -- human-readable summary
-  link            TEXT NOT NULL,                              -- relative path to jump to
-  is_read         INTEGER NOT NULL DEFAULT 0,                 -- 0/1 (SQLite has no bool)
+  user_id         TEXT NOT NULL,
+  type            TEXT NOT NULL,
+  ref_kind        TEXT NOT NULL,
+  ref_id          TEXT NOT NULL,
+  actor_id        TEXT,
+  actor_name      TEXT,
+  message         TEXT NOT NULL,
+  link            TEXT NOT NULL,
+  is_read         INTEGER NOT NULL DEFAULT 0,
   created_at      TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (user_id)   REFERENCES users(id)    ON DELETE CASCADE,
   FOREIGN KEY (actor_id)  REFERENCES users(id)    ON DELETE SET NULL
@@ -202,7 +158,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_user   ON notifications(user_id, is
 CREATE INDEX IF NOT EXISTS idx_notifications_unread ON notifications(user_id, created_at) WHERE is_read = 0;
 
 -- =========================================================================
--- files — uploaded documents (studio uploads, both download)
+-- files
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS files (
   id              TEXT PRIMARY KEY,
@@ -222,17 +178,17 @@ CREATE INDEX IF NOT EXISTS idx_files_project ON files(project_id);
 CREATE INDEX IF NOT EXISTS idx_files_card    ON files(card_id);
 
 -- =========================================================================
--- card_history — audit trail of every meaningful change to a card
+-- card_history
 -- =========================================================================
 CREATE TABLE IF NOT EXISTS card_history (
   id          TEXT PRIMARY KEY,
   card_id     TEXT NOT NULL,
   project_id  TEXT NOT NULL,
-  user_id     TEXT,                              -- nullable: a deletion actor can be soft-nulled
-  user_name   TEXT NOT NULL DEFAULT '',          -- cached at insert time for display
-  action      TEXT NOT NULL,                     -- 'created' | 'moved' | 'assigned' | 'unassigned' | 'priority_changed' | 'renamed' | 'description_changed' | 'due_date_set' | 'due_date_cleared' | 'estimated_hours_changed' | 'deleted'
-  from_value  TEXT,                              -- textual representation of the old state
-  to_value    TEXT,                              -- textual representation of the new state
+  user_id     TEXT,
+  user_name   TEXT NOT NULL DEFAULT '',
+  action      TEXT NOT NULL,
+  from_value  TEXT,
+  to_value    TEXT,
   created_at  TEXT NOT NULL DEFAULT (datetime('now')),
   FOREIGN KEY (card_id)    REFERENCES cards(id)    ON DELETE CASCADE,
   FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
@@ -240,3 +196,19 @@ CREATE TABLE IF NOT EXISTS card_history (
 );
 CREATE INDEX IF NOT EXISTS idx_card_history_card    ON card_history(card_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_card_history_project ON card_history(project_id, created_at);
+
+-- =========================================================================
+-- email_changes (two-step email confirmation)
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS email_changes (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  new_email   TEXT NOT NULL,
+  token       TEXT UNIQUE NOT NULL,
+  expires_at  TEXT NOT NULL,
+  accepted_at TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_email_changes_token ON email_changes(token);
+CREATE INDEX IF NOT EXISTS idx_email_changes_user  ON email_changes(user_id, accepted_at);

@@ -19,10 +19,48 @@ bucket_name = "diernus-portal-files"
 binding = "SESSIONS"
 id = "359aa1e3bf0f44a0a74100646d0a49a0"
 
-# Vars (non-secret) — set per env if needed
+# Vars (non-secret) — defaults applied to every env unless overridden below
 [vars]
 ENVIRONMENT = "production"
 MAX_UPLOAD_MB = "50"
+
+# =========================================================================
+# Staging environment
+# Separate D1 (diernus-portal-db-staging), different PUBLIC_URL so emails
+# + CORS + OAuth redirect_uri all point at the staging frontend.
+# Deploy with:  npx wrangler deploy --env staging
+# =========================================================================
+[env.staging]
+name = "diernus-portal-api-staging"
+[env.staging.vars]
+ENVIRONMENT = "staging"
+# Staging frontend lives on the existing Pages project but with a
+# different api-base meta tag. The same .pages.dev URL is fine for
+# both — the api-base tag determines which worker it talks to.
+PUBLIC_URL = "https://diernus-portal-staging.pages.dev"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "diernus-portal-db-staging"
+database_id = "7467cc62-16c4-4bb2-96cb-5bc625793509"
+
+# R2 and KV are shared with production (no need to duplicate — staging
+# uploads + sessions are isolated by cookie domain in practice, and
+# this saves us from paying for a second R2 bucket / KV namespace)
+[[env.staging.r2_buckets]]
+binding = "FILES"
+bucket_name = "diernus-portal-files"
+
+[[env.staging.kv_namespaces]]
+binding = "SESSIONS"
+id = "359aa1e3bf0f44a0a74100646d0a49a0"
+
+# Secrets for staging (set with `wrangler secret put <NAME> --env staging`):
+#   JWT_SECRET   — random 32+ char string
+#   RESEND_KEY   — Resend API key (shared with prod is fine)
+#   EMAIL_FROM   — "Diernus <ola@diernus.com>" (shared)
+#   GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET — optional
+
 
 # Secrets (set with `wrangler secret put <NAME>`):
 #   JWT_SECRET   — random 32+ char string
