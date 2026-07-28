@@ -474,3 +474,79 @@ Se não foi você, ignore este email — a sua conta mantém o email anterior. O
   });
   return { subject, html, text };
 }
+
+// --- Card overdue email (cron, daily) ---
+// Sent when a card's due_date has passed and it's still in an open column.
+// Goes to the assignee (or every studio admin if unassigned) once per
+// (card, UTC day) — the cron_log table dedupes. Keeps the tone operational
+// not guilt-trippy: "está em atraso" + "dias desde o prazo", no scolding.
+export function cardOverdueEmail(args: {
+  recipientName: string;
+  projectName: string;
+  cardTitle: string;
+  dueDate: string;     // pre-formatted, e.g. "27 de julho de 2026"
+  daysOverdue: number; // 1, 2, 3, ...
+  cardUrl: string;
+}): { subject: string; html: string; text: string } {
+  const daysLabel = args.daysOverdue === 1 ? '1 dia' : `${args.daysOverdue} dias`;
+  const subject = `Cartão em atraso (${daysLabel}): ${args.cardTitle} · ${args.projectName}`;
+  const body =
+`O cartão <b>“${escapeHtml(args.cardTitle)}”</b> do projeto <b>${escapeHtml(args.projectName)}</b> está em atraso — venceu a <b>${escapeHtml(args.dueDate)}</b> (${daysLabel}).<br><br>
+Abre o cartão para reveres o que falta, atualizares a data, ou fechares se já não for relevante.`;
+  const text =
+`Olá ${args.recipientName},
+
+O cartão "${args.cardTitle}" do projeto "${args.projectName}" está em atraso — venceu a ${args.dueDate} (${daysLabel}).
+
+Abre o cartão para rever o que falta, atualizar a data, ou fechar se já não for relevante:
+${args.cardUrl}
+
+— Diernus`;
+  const html = shell({
+    eyebrow: 'DIERNUS · CARTÃO EM ATRASO',
+    heading: `Cartão em atraso, ${escapeHtml(args.recipientName)}`,
+    bodyHtml: body,
+    ctaText: 'VER CARTÃO',
+    ctaUrl: args.cardUrl,
+    footer: 'Notificação automática — enviada uma vez por dia enquanto o cartão estiver em atraso.',
+  });
+  return { subject, html, text };
+}
+
+// --- Project overdue email (cron, daily) ---
+// Sent when a project's due_date has passed and it's still active (not
+// completed/archived). Goes to every active admin. The client does NOT
+// get this automatically — overdue delivery is an internal planning
+// signal, not a client-facing nudge.
+export function projectOverdueEmail(args: {
+  recipientName: string;
+  projectName: string;
+  clientName: string;
+  dueDate: string;
+  daysOverdue: number;
+  projectUrl: string;
+}): { subject: string; html: string; text: string } {
+  const daysLabel = args.daysOverdue === 1 ? '1 dia' : `${args.daysOverdue} dias`;
+  const subject = `Projeto em atraso (${daysLabel}): ${args.projectName}`;
+  const body =
+`O projeto <b>${escapeHtml(args.projectName)}</b> (cliente: <b>${escapeHtml(args.clientName)}</b>) está em atraso — vencia a <b>${escapeHtml(args.dueDate)}</b> (${daysLabel}).<br><br>
+Abre o projeto para reavaliares o plano, atualizares a data, ou alinhares com o cliente.`;
+  const text =
+`Olá ${args.recipientName},
+
+O projeto "${args.projectName}" (cliente: ${args.clientName}) está em atraso — vencia a ${args.dueDate} (${daysLabel}).
+
+Abre o projeto para reavaliar o plano, atualizar a data, ou alinhar com o cliente:
+${args.projectUrl}
+
+— Diernus`;
+  const html = shell({
+    eyebrow: 'DIERNUS · PROJETO EM ATRASO',
+    heading: `Projeto em atraso, ${escapeHtml(args.recipientName)}`,
+    bodyHtml: body,
+    ctaText: 'VER PROJETO',
+    ctaUrl: args.projectUrl,
+    footer: 'Notificação automática — enviada uma vez por dia enquanto o projeto estiver em atraso.',
+  });
+  return { subject, html, text };
+}

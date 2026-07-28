@@ -73,8 +73,10 @@ function titleFor(type: string): string {
     case 'studio_file':        return 'Novo ficheiro do estúdio';
     case 'card_moved':         return 'Cartão atualizado';
     case 'card_created':       return 'Novo cartão';
+    case 'card_overdue':       return 'Cartão em atraso';
     case 'project_status':     return 'Estado do projeto';
     case 'project_completed':  return 'Projeto concluído';
+    case 'project_overdue':    return 'Projeto em atraso';
     default:                   return 'Notificação';
   }
 }
