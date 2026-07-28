@@ -65,18 +65,34 @@ LOGIN_CLIENT=$(status -X POST "$API/auth/login" -H "Content-Type: application/js
 # Test-data constants
 TEAM_ID="usr_team_test"           # Joana (current role=team)
 ADMIN_ID="usr_admin_001"          # Andre
-# Pick a real card from the Cadeira project for the history test (the previous
-# "Card de teste do histórico" test card was deleted in the test-data cleanup).
-HISTORY_PROJECT="f046645a-b829-45e4-9008-dd6d4423d950"
-ENTRY_CARD="eca5eaf6-e7b1-49c8-9839-85c21b5eedaf"
-HISTORY_CARD="$ENTRY_CARD"        # use the same card for both
-ENTRY_ID="4d5f94d9-7379-479d-8552-2732486ce96f"       # 2.5h on that card
-ENTRY_PROJECT="$HISTORY_PROJECT"
-ENTRY_ID="4d5f94d9-7379-479d-8552-2732486ce96f"       # 2.5h on card eca5eaf6
-ENTRY_CARD="eca5eaf6-e7b1-49c8-9839-85c21b5eedaf"
-ENTRY_PROJECT="f046645a-b829-45e4-9008-dd6d4423d950"
-FILE_ID="8076ca93-14a0-4e20-88d9-afa8ca850bcb"        # README.md in another project
-FILE_PROJECT="a8147a9b-9e55-40ef-a3c1-4fa9b2d3ba4a"
+
+# If a .staging-fixtures.json exists AND the API URL is a staging URL,
+# prefer its IDs. Otherwise fall back to the production fixtures hardcoded
+# below — those work on a real D1 with the Cadeira project + the test users
+# seeded by the original DB setup.
+#
+# The URL check prevents accidentally running the regression against
+# production with staging-specific IDs that don't exist there. To opt in,
+# either run against a *.workers.dev staging URL or override STAGING=1.
+if [ "${STAGING:-0}" = "1" ] || echo "$API" | grep -qE "staging"; then
+  FX_FILE="$(cd "$(dirname "$0")" && pwd)/.staging-fixtures.json"
+  if [ -f "$FX_FILE" ]; then
+    eval "$(python3 -c "
+import json
+with open('$FX_FILE') as f:
+    d = json.load(f)
+for k, v in d.items():
+    print(f'{k.upper()}={json.dumps(v)}')")"
+    echo "  → using fixtures from $FX_FILE (staging mode)"
+  fi
+fi
+HISTORY_PROJECT="${HISTORY_PROJECT:-f046645a-b829-45e4-9008-dd6d4423d950}"
+ENTRY_CARD="${ENTRY_CARD:-eca5eaf6-e7b1-49c8-9839-85c21b5eedaf}"
+HISTORY_CARD="${HISTORY_CARD:-$ENTRY_CARD}"
+ENTRY_ID="${ENTRY_ID:-4d5f94d9-7379-479d-8552-2732486ce96f}"
+ENTRY_PROJECT="${ENTRY_PROJECT:-$HISTORY_PROJECT}"
+FILE_ID="${FILE_ID:-8076ca93-14a0-4e20-88d9-afa8ca850bcb}"
+FILE_PROJECT="${FILE_PROJECT:-a8147a9b-9e55-40ef-a3c1-4fa9b2d3ba4a}"
 CLIENT_PROJECT=$(body -b /tmp/c-client.txt "$API/projects" | python3 -c "import sys,json; ps=json.load(sys.stdin)['projects']; print(ps[0]['id'] if ps else '')")
 
 # =========================================================================
@@ -125,7 +141,14 @@ S=$(status -b /tmp/c-team.txt -X PATCH "$API/team/members/${TEAM_ID}/role" \
   -H "Content-Type: application/json" -d '{"role":"admin"}')
 assert_eq "team cannot change roles → 403" "403" "$S"
 # 8. Promote a client → 400 (clients aren't team members)
-CLIENT_ID="8f1a6e02-ef0f-4af2-93fb-3d78c1b9f4c7"
+#    Look up the actual cliente.demo id from the API so this works
+#    against both production and a freshly-seeded staging D1.
+CLIENT_ID=$(body -b /tmp/c-admin.txt "$API/clients" | python3 -c "
+import sys, json
+for c in json.load(sys.stdin)['clients']:
+    if c['email'] == 'cliente.demo@diernus.com':
+        print(c['id']); break
+")
 S=$(status -b /tmp/c-admin.txt -X PATCH "$API/team/members/${CLIENT_ID}/role" \
   -H "Content-Type: application/json" -d '{"role":"admin"}')
 assert_eq "promote a client → 400" "400" "$S"
@@ -246,6 +269,12 @@ S=$(echo "$H" | head -1 | awk '{print $2}')
 CD=$(echo "$H" | grep -i '^content-disposition:' | tr -d '\r' | awk -F': ' '{print $2}')
 assert_eq "default GET → 200" "200" "$S"
 assert_in "  Content-Disposition: attachment" "attachment" "$CD"
+# 1b. Discover the actual file size from the response — the assertions
+#     below use this rather than a hardcoded number so the test works
+#     against both the production README.md (412B) and any size seed file.
+FILE_SIZE=$(echo "$H" | grep -i '^content-length:' | tr -d '\r' | awk -F': ' '{print $2}')
+echo "  using FILE_SIZE=$FILE_SIZE (from response Content-Length)"
+
 # 2. ?inline=1 → 200 + inline + Accept-Ranges
 H=$(curl -s -D - -o /dev/null -b /tmp/c-admin.txt "$API/files/${FILE_ID}?inline=1")
 S=$(echo "$H" | head -1 | awk '{print $2}')
@@ -266,29 +295,32 @@ CR=$(echo "$H" | grep -i '^content-range:' | tr -d '\r' | awk -F': ' '{print $2}
 CL=$(echo "$H" | grep -i '^content-length:' | tr -d '\r' | awk -F': ' '{print $2}')
 GOT=$(wc -c < /tmp/range-body | tr -d ' ')
 assert_eq "Range bytes=0-99 → 206" "206" "$S"
-assert_in "  Content-Range: bytes 0-99/412" "bytes 0-99/412" "$CR"
+assert_in "  Content-Range: bytes 0-99/${FILE_SIZE}" "bytes 0-99/${FILE_SIZE}" "$CR"
 assert_eq "  Content-Length = 100" "100" "$CL"
 assert_eq "  body has 100 bytes" "100" "$GOT"
-# 5. Suffix range bytes=-50 → 206, last 50 of 412
+# 5. Suffix range bytes=-50 → 206, last 50 of FILE_SIZE
 H=$(curl -s -D - -o /dev/null -b /tmp/c-admin.txt -H 'Range: bytes=-50' "$API/files/${FILE_ID}?inline=1")
 S=$(echo "$H" | head -1 | awk '{print $2}')
 CR=$(echo "$H" | grep -i '^content-range:' | tr -d '\r' | awk -F': ' '{print $2}')
 CL=$(echo "$H" | grep -i '^content-length:' | tr -d '\r' | awk -F': ' '{print $2}')
 assert_eq "Range bytes=-50 → 206" "206" "$S"
-assert_in "  Content-Range: bytes 362-411/412" "bytes 362-411/412" "$CR"
+# Last 50 of FILE_SIZE: content-range is "bytes $((FILE_SIZE-50))-$((FILE_SIZE-1))/${FILE_SIZE}"
+SUFFIX_START=$((FILE_SIZE-50))
+SUFFIX_END=$((FILE_SIZE-1))
+assert_in "  Content-Range: bytes ${SUFFIX_START}-${SUFFIX_END}/${FILE_SIZE}" "bytes ${SUFFIX_START}-${SUFFIX_END}/${FILE_SIZE}" "$CR"
 assert_eq "  Content-Length = 50" "50" "$CL"
-# 6. Range bytes=0- (open end → to EOF) → 206, full file (412B)
+# 6. Range bytes=0- (open end → to EOF) → 206, full file
 H=$(curl -s -D - -o /dev/null -b /tmp/c-admin.txt -H 'Range: bytes=0-' "$API/files/${FILE_ID}?inline=1")
 S=$(echo "$H" | head -1 | awk '{print $2}')
 CL=$(echo "$H" | grep -i '^content-length:' | tr -d '\r' | awk -F': ' '{print $2}')
 assert_eq "Range bytes=0- (open end) → 206" "206" "$S"
-assert_eq "  Content-Length = 412 (full file)" "412" "$CL"
+assert_eq "  Content-Length = ${FILE_SIZE} (full file)" "${FILE_SIZE}" "$CL"
 # 7. Range past EOF is forgiving (clamps to EOF) — implementation choice
 H=$(curl -s -D - -o /dev/null -b /tmp/c-admin.txt -H 'Range: bytes=0-999999' "$API/files/${FILE_ID}?inline=1")
 S=$(echo "$H" | head -1 | awk '{print $2}')
 CR=$(echo "$H" | grep -i '^content-range:' | tr -d '\r' | awk -F': ' '{print $2}')
 assert_eq "Range past EOF → 206 (clamped)" "206" "$S"
-assert_in "  Content-Range ends at /412" "/412" "$CR"
+assert_in "  Content-Range ends at /${FILE_SIZE}" "/${FILE_SIZE}" "$CR"
 # 8. Malformed Range header → fall back to 200 full file
 H=$(curl -s -D - -o /dev/null -b /tmp/c-admin.txt -H 'Range: bytes=abc-def' "$API/files/${FILE_ID}?inline=1")
 S=$(echo "$H" | head -1 | awk '{print $2}')

@@ -1,0 +1,11 @@
+{
+  "admin_email":      "admin@staging.diernus.com",
+  "admin_password":   "staging2026",
+  "client_email":     "cliente.demo@diernus.com",
+  "history_project":  "57c68432-4b3a-4b33-b1ae-4c70c68e411e",
+  "history_card":     "cd17af1b-0309-48b9-9123-50b8f563253d",
+  "entry_card":       "cd17af1b-0309-48b9-9123-50b8f563253d",
+  "entry_id":         "3977978b-33e9-4854-b59f-45f552fedd70",
+  "file_id":          "3dc9b2fb-cf6b-40bf-b2d3-963b72402119",
+  "file_project":     "782c15ab-dd82-4b35-b75a-1d856eb3bf17"
+}
