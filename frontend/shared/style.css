@@ -600,6 +600,34 @@ h2 {
 }
 
 /* ==========================================================================
+   OVERVIEW TOGGLE — "Incluir arquivados" checkbox on Visão Geral
+   (re-uses the same chip styling language as the board-filter on Quadro Geral)
+   ========================================================================== */
+.overview-section-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 1rem; margin: 1.6rem 0 .7rem; flex-wrap: wrap;
+}
+.overview-section-head h2 {
+  font-family: var(--sans); font-weight: 700; font-size: 1.1rem;
+  margin: 0; color: var(--graphite); letter-spacing: -.005em;
+}
+.overview-toggle {
+  display: inline-flex; align-items: center; gap: .5rem;
+  font-family: var(--sans); font-weight: 500; font-size: .82rem;
+  color: var(--graphite-60); cursor: pointer; user-select: none;
+}
+.overview-toggle input { accent-color: var(--clay); cursor: pointer; }
+.overview-toggle:hover { color: var(--graphite); }
+
+/* Status chip — distinct from project chip on the Quadro Geral.
+   No dot, no count — it's a tab, not a tag. */
+.status-filter { margin-bottom: .55rem; }
+.status-filter .board-filter-chip { padding: .32rem .8rem; }
+.status-filter .board-filter-chip .chip-label { font-weight: 500; }
+.status-filter .board-filter-chip.is-active { background: var(--clay); color: var(--bone); border-color: var(--clay); }
+.status-filter .board-filter-chip.is-active:hover { background: var(--clay-hover); }
+
+/* ==========================================================================
    CARD DETAIL (side panel)
    ========================================================================== */
 .card-detail-back {

@@ -69,17 +69,40 @@ async function assertProjectAccess(c: { get: (k: string) => unknown; env: Env },
 }
 
 // GET /api/board — admin/team-only multi-project Jira-style board
-// Returns all projects (non-archived) + all columns + all cards in one shot.
-// The frontend groups columns by name to render a unified 3-column board,
-// and filters by project when the admin focuses on a single client.
+// Returns projects + columns + cards in one shot. The frontend groups columns
+// by name to render a unified 3-column board, and filters by project when the
+// admin focuses on a single client.
+//
+// Default behaviour: only ACTIVE projects (backwards-compat with the original
+// auto-complete-on-last-card semantics — completed/archived projects are not on
+// the unified board unless explicitly asked for).
+//
+// Opt-in flags (?include_status=active,completed,archived comma list) override
+// the default. This lets the Quadro Geral surface a "Arquivados" filter chip
+// without breaking the existing call sites.
+//
+// Examples:
+//   GET /api/board                       → active only
+//   GET /api/board?include_status=archived  → only archived
+//   GET /api/board?include_status=all       → everything
+//   GET /api/board?include_status=active,completed  → active + completed
 cardRoutes.get('/board', requireStudio, async (c) => {
-  // Only active projects show on the multi-board. completed/archived projects
-  // drop off automatically (auto-complete kicks in when all cards close).
+  // Parse the include_status query param. Default = ['active'].
+  // Unknown values are silently dropped (avoids 400 for typos).
+  const VALID = new Set(['active', 'completed', 'archived']);
+  const includeParam = c.req.query('include_status');
+  const requested = includeParam
+    ? includeParam.split(',').map(s => s.trim()).filter(s => VALID.has(s))
+    : ['active'];
+  const statuses = requested.length ? requested : ['active'];  // safety: never empty
+  const ph = statuses.map(() => '?').join(',');
+
   const projects = await c.env.DB
     .prepare(`SELECT p.*, c.name AS client_name, c.email AS client_email
               FROM projects p JOIN users c ON c.id = p.client_id
-              WHERE p.status = 'active'
-              ORDER BY p.updated_at DESC`)
+              WHERE p.status IN (${ph})
+              ORDER BY p.status = 'active' DESC, p.updated_at DESC`)
+    .bind(...statuses)
     .all<any>();
   const projectIds = projects.results.map((p: any) => p.id);
   let columns: any[] = [];

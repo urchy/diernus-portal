@@ -9,10 +9,27 @@
 //   (the real columns are now in play, so the existing move endpoint works),
 //   "+ Cartão" buttons become active, and an "Abrir projeto" link goes to
 //   the full editor for that project.
+//
+// Status filter (Ativos | Concluídos | Arquivados | Todos):
+//   - Default = 'active' — only the active projects on the unified board
+//   - Click "Arquivados" to see only archived projects
+//   - Click "Todos" to see every project at once
+//   The chips above the project filter drive this. The worker endpoint
+//   (GET /api/board?include_status=...) keeps the data set small.
 
 import { api } from './api.js';
 import { $, escapeHtml, initials, timeAgo, showToast } from './layout.js';
 import { openCardDetail, openNewCardModal } from './board.js';
+
+// Status filter — defaults to 'active' (the original behaviour: completed
+// and archived projects don't appear unless the user explicitly opts in).
+// 'all' = active + completed + archived.
+const STATUS_FILTERS = [
+  { key: 'active',    label: 'Ativos' },
+  { key: 'completed', label: 'Concluídos' },
+  { key: 'archived',  label: 'Arquivados' },
+  { key: 'all',       label: 'Todos' },
+];
 
 const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
 const PRIORITY_DOT_CLASS = { low: 'low', medium: 'medium', high: 'high' };
@@ -27,15 +44,31 @@ const STATUS_BUCKETS = ['A Fazer', 'Em Curso', 'Concluído'];
  * @param mountEl  HTMLElement to render into
  */
 export async function mountMultiBoard(mountEl) {
-  const { projects, columns, cards } = await api.boardAll();
+  // session state
+  let focused = null;        // project.id | null
+  let statusFilter = 'active'; // 'active' | 'completed' | 'archived' | 'all'
+
+  // initial fetch — pass the current status filter so the worker only
+  // returns the projects that match. We refresh on every status change.
+  let projects, columns, cards;
+  async function reload() {
+    const params = new URLSearchParams();
+    if (statusFilter === 'all') params.set('include_status', 'active,completed,archived');
+    else params.set('include_status', statusFilter);
+    const res = await api.boardAll(params);
+    projects = res.projects; columns = res.columns; cards = res.cards;
+  }
+  await reload();
 
   if (projects.length === 0) {
     mountEl.innerHTML = `
       <div class="page-head">
         <div>
           <span class="eyebrow">Quadro geral</span>
-          <h1>Sem projetos ainda</h1>
-          <p class="lede">Crie um cliente em <a href="/admin/clientes.html">Clientes</a> e depois um projeto em <a href="/admin/projetos.html">Projetos</a> — eles aparecem aqui automaticamente.</p>
+          <h1>Sem projetos ${statusFilter === 'archived' ? 'arquivados' : 'ativos'}</h1>
+          <p class="lede">${statusFilter === 'archived'
+            ? 'Quando arquivar um projeto, ele aparece aqui.'
+            : 'Crie um cliente em <a href="/admin/clientes.html">Clientes</a> e depois um projeto em <a href="/admin/projetos.html">Projetos</a>.'}</p>
         </div>
       </div>`;
     return;
@@ -45,21 +78,30 @@ export async function mountMultiBoard(mountEl) {
   const projectColor = new Map();
   for (const p of projects) projectColor.set(p.id, colorForId(p.id));
 
-  // session state: which project is focused, or null = "Todos"
-  let focused = null; // project.id | null
-
   // build the header (chips + actions)
   const header = document.createElement('div');
   header.className = 'board-head';
   header.innerHTML = `
     <div>
       <span class="eyebrow">Quadro geral</span>
-      <h1>Todos os projetos</h1>
+      <h1>${statusFilterLabel(statusFilter)}</h1>
       <p class="lede">${projects.length} ${projects.length === 1 ? 'projeto' : 'projetos'} · ${cards.length} ${cards.length === 1 ? 'cartão' : 'cartões'}</p>
     </div>
     <div class="board-meta" id="boardActions"></div>
   `;
   mountEl.appendChild(header);
+
+  // Status filter chips — "Ativos | Concluídos | Arquivados | Todos"
+  // Default = Ativos (the previous behaviour). Click changes the worker
+  // query + re-renders the entire view.
+  const statusChips = document.createElement('div');
+  statusChips.className = 'board-filter status-filter';
+  for (const f of STATUS_FILTERS) {
+    const c = statusChipEl(f.key, f.label);
+    if (f.key === statusFilter) c.classList.add('is-active');
+    statusChips.appendChild(c);
+  }
+  mountEl.appendChild(statusChips);
 
   // project filter chips
   const chips = document.createElement('div');
@@ -78,7 +120,24 @@ export async function mountMultiBoard(mountEl) {
   const boardHost = document.createElement('div');
   mountEl.appendChild(boardHost);
 
-  // chip click → focus change
+  // status chip click → reload with new status
+  statusChips.addEventListener('click', async e => {
+    const chip = e.target.closest('.board-filter-chip');
+    if (!chip) return;
+    const newStatus = chip.dataset.status;
+    if (newStatus === statusFilter) return;
+    statusFilter = newStatus;
+    focused = null;  // reset focus when changing status (focused project may not be in the new set)
+    await reload();
+    for (const c of statusChips.querySelectorAll('.board-filter-chip')) c.classList.remove('is-active');
+    chip.classList.add('is-active');
+    // re-build the project chips for the new project set
+    rebuildProjectChips();
+    updateHeader();
+    renderBoard();
+  });
+
+  // project chip click → focus change
   chips.addEventListener('click', e => {
     const chip = e.target.closest('.board-filter-chip');
     if (!chip) return;
@@ -90,6 +149,21 @@ export async function mountMultiBoard(mountEl) {
     renderBoard();
   });
 
+  function rebuildProjectChips() {
+    // keep the "Todos" chip, rebuild per-project chips for the current project set
+    const allChip = chips.querySelector('.board-filter-chip[data-project="all"]');
+    chips.innerHTML = '';
+    chips.appendChild(allChip);
+    for (const p of projects) {
+      const count = cards.filter(c => c.project_id === p.id).length;
+      chips.appendChild(chipEl(p.id, p.name, count, projectColor.get(p.id), p.name));
+    }
+    // re-activate the "Todos" chip since the previous focused project may
+    // not be in the new set
+    for (const c of chips.querySelectorAll('.board-filter-chip')) c.classList.remove('is-active');
+    allChip.classList.add('is-active');
+  }
+
   function updateHeader() {
     const proj = focused ? projects.find(p => p.id === focused) : null;
     const meta = header.querySelector('#boardActions');
@@ -97,19 +171,26 @@ export async function mountMultiBoard(mountEl) {
       header.querySelector('h1').textContent = proj.name;
       header.querySelector('.lede').textContent =
         `${proj.client_name} · ${cards.filter(c => c.project_id === proj.id).length} cartões`;
-      const isClosed = proj.status !== 'active';
+      const isArchived = proj.status === 'archived';
+      const isCompleted = proj.status === 'completed';
+      // status pill class for the focused project
+      const pillCls = isArchived ? 'archived' : (isCompleted ? 'active' : 'online');
+      const pillLabel = isArchived ? 'arquivado' : (isCompleted ? 'concluído' : 'em curso');
       meta.innerHTML = `
         <span class="meta-pill"><span class="meta-label">€/hora</span><span class="meta-value">${formatPrice(proj.hourly_rate)}</span></span>
         <span class="meta-pill"><span class="meta-label">orçamento</span><span class="meta-value">${proj.budget_hours != null ? formatHours(proj.budget_hours) + ' h' : '—'}</span></span>
         <a class="btn sm ghost" href="/admin/projeto.html?id=${encodeURIComponent(proj.id)}">Abrir projeto ›</a>
-        ${!isClosed
+        ${!isArchived && !isCompleted
           ? `<button class="btn sm ghost" id="closeProject" style="color:var(--stamp)">Fechar projeto</button>`
-          : `<span class="status-pill ${isClosed ? 'suspended' : 'online'}">${proj.status === 'completed' ? 'concluído' : proj.status}</span>`}
+          : `<button class="btn sm ghost" id="reopenProject">Reativar</button>`}
+        <span class="status-pill ${pillCls}">${pillLabel}</span>
       `;
       const closeBtn = meta.querySelector('#closeProject');
       if (closeBtn) closeBtn.addEventListener('click', () => closeProjectNow(proj));
+      const reopenBtn = meta.querySelector('#reopenProject');
+      if (reopenBtn) reopenBtn.addEventListener('click', () => reopenProjectNow(proj));
     } else {
-      header.querySelector('h1').textContent = 'Todos os projetos';
+      header.querySelector('h1').textContent = statusFilterLabel(statusFilter);
       header.querySelector('.lede').textContent =
         `${projects.length} projetos · ${cards.length} cartões`;
       meta.innerHTML = '';
@@ -123,6 +204,17 @@ export async function mountMultiBoard(mountEl) {
       await refreshAfterMutation();
     } catch (e) {
       alert('Não foi possível fechar o projeto: ' + e.message);
+    }
+  }
+
+  async function reopenProjectNow(proj) {
+    const target = proj.status === 'archived' ? 'active' : 'active';  // both → active
+    if (!confirm(`Reativar o projeto "${proj.name}"? Volta a aparecer no portal do cliente.`)) return;
+    try {
+      await api.updateProject(proj.id, { status: target });
+      await refreshAfterMutation();
+    } catch (e) {
+      alert('Não foi possível reativar o projeto: ' + e.message);
     }
   }
 
@@ -175,8 +267,11 @@ export async function mountMultiBoard(mountEl) {
     }
     boardHost.appendChild(board);
 
-    // drag-drop — works in both "Todos" and focused mode
-    if (window.Sortable) {
+    // drag-drop — works in both "Todos" and focused mode, EXCEPT when focused
+    // on an archived project (read-only history view).
+    const focusedProj = focused ? projects.find(p => p.id === focused) : null;
+    const focusedArchived = focusedProj && focusedProj.status === 'archived';
+    if (window.Sortable && !focusedArchived) {
       for (const list of board.querySelectorAll('.kcol-cards')) {
         window.Sortable.create(list, {
           group: 'kanban',
@@ -225,8 +320,8 @@ export async function mountMultiBoard(mountEl) {
       }
     }
 
-    // "+ Cartão" button (focused mode only)
-    if (focused) {
+    // "+ Cartão" button (focused mode, non-archived projects only)
+    if (focused && !focusedArchived) {
       board.addEventListener('click', e => {
         const addBtn = e.target.closest('.kcol-add');
         if (addBtn) {
@@ -243,23 +338,29 @@ export async function mountMultiBoard(mountEl) {
       if (!cardEl) return;
       e.preventDefault();
       const cardId = cardEl.dataset.cardId;
-      // editable only when focused on the project that owns the card
+      // editable only when focused on the project that owns the card, AND
+      // the focused project is not archived.
       const card = cards.find(c => c.id === cardId);
-      const canEdit = focused != null && card && card.project_id === focused;
+      const focusedProj = focused ? projects.find(p => p.id === focused) : null;
+      const focusedArchived = focusedProj && focusedProj.status === 'archived';
+      const canEdit = focused != null && card && card.project_id === focused && !focusedArchived;
       openCardDetail(cardId, canEdit, () => refreshAfterMutation(), card ? card.project_id : null);
     });
   }
 
   async function refreshAfterMutation() {
-    // simplest: re-fetch everything and re-render
-    const fresh = await api.boardAll();
+    // simplest: re-fetch using the current status filter, then re-render
+    const params = new URLSearchParams();
+    if (statusFilter === 'all') params.set('include_status', 'active,completed,archived');
+    else params.set('include_status', statusFilter);
+    const fresh = await api.boardAll(params);
     // mutate the captured state in place
     projects.length = 0; projects.push(...fresh.projects);
     columns.length = 0; columns.push(...fresh.columns);
     cards.length = 0;   cards.push(...fresh.cards);
     // if the focused project was auto-completed, it disappeared from /api/board
-    // (only active projects show). Drop focus to "Todos" so the user isn't
-    // staring at a stale focused state.
+    // (only active projects show by default). Drop focus to "Todos" so the user
+    // isn't staring at a stale focused state.
     if (focused && !projects.find(p => p.id === focused)) {
       focused = null;
       for (const c of chips.querySelectorAll('.board-filter-chip')) c.classList.remove('is-active');
@@ -345,6 +446,24 @@ function chipEl(id, name, count, color, label) {
     <span class="chip-count">${count}</span>
   `;
   return el;
+}
+
+// Status chip — used for the Ativos / Concluídos / Arquivados / Todos row.
+// data-status drives the URL param sent to the worker; the chip is unstyled
+// inside (no project colour) so it reads as a tab, not a tag.
+function statusChipEl(key, label) {
+  const el = document.createElement('button');
+  el.className = 'board-filter-chip status-chip';
+  el.dataset.status = key;
+  el.innerHTML = `
+    <span class="chip-label">${escapeHtml(label)}</span>
+  `;
+  return el;
+}
+
+// Human-readable title for the current status filter — used as the page <h1>.
+function statusFilterLabel(key) {
+  return { active: 'Projetos ativos', completed: 'Projetos concluídos', archived: 'Projetos arquivados', all: 'Todos os projetos' }[key] || 'Quadro geral';
 }
 
 function colorForId(id) {

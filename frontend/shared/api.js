@@ -75,7 +75,13 @@ export const api = {
 
   // Board
   board: (projectId) => request('/api/projects/' + encodeURIComponent(projectId) + '/board'),
-  boardAll: () => request('/api/board'),
+  // boardAll — multi-project Jira-style board. Pass `params` (URLSearchParams)
+  // to filter by project status — e.g. `new URLSearchParams({include_status:'archived'})`.
+  // The Quadro Geral uses this to switch between Ativos / Concluídos / Arquivados.
+  boardAll: (params) => {
+    const qs = params && params.toString ? `?${params.toString()}` : '';
+    return request('/api/board' + qs);
+  },
   createCard: (projectId, body) =>
     request('/api/projects/' + encodeURIComponent(projectId) + '/cards', { method: 'POST', body }),
   updateCard: (id, patch) =>

@@ -24,7 +24,10 @@
     const { me, content } = await renderLayout({ active: 'overview', crumbs: ['Visão geral'] });
     const loading = pageLoading(content, 'A carregar visão geral…');
 
-    // Pull everything we need in parallel
+    // Pull everything we need in parallel. We fetch the active-only board
+    // by default (the original behaviour), then the "Incluir arquivados"
+    // toggle re-fetches the multiboard with include_status=all and merges
+    // the additional archived projects into the local state.
     let c, p, b;
     try {
       [c, p, b] = await Promise.all([
@@ -39,25 +42,33 @@
     loading.remove();
     const clients = c.clients || [];
     const projects = p.projects || [];
-    const allCards = b.cards || [];
+    let allCards = b.cards || [];
+    let allProjects = b.projects || [];
 
     const activeProjects = projects.filter(p => p.status === 'active').length;
     const pendingClients = clients.filter(c => c.status === 'pending').length;
 
+    // "Incluir arquivados" toggle state. Default off — we want Visão Geral
+    // to be a "what's happening NOW" view, not a history view. The user
+    // can opt in to see the closed projects as well.
+    let includeArchived = false;
+
     // Build the "Próximas tarefas" list:
-    //   - cards from ACTIVE projects (we already filter on the worker)
+    //   - cards from projects matching the current includeArchived flag
     //   - sorted by due_date ASC, then priority DESC (high first)
     //   - limit 10
     const PRIO = { high: 3, medium: 2, low: 1 };
-    const upcoming = allCards
-      .filter(card => card.due_date)
-      .sort((a, b) => {
-        const da = new Date(a.due_date).getTime();
-        const db = new Date(b.due_date).getTime();
-        if (da !== db) return da - db;
-        return (PRIO[b.priority] || 0) - (PRIO[a.priority] || 0);
-      })
-      .slice(0, 10);
+    function buildUpcoming() {
+      return allCards
+        .filter(card => card.due_date)
+        .sort((a, b) => {
+          const da = new Date(a.due_date).getTime();
+          const db = new Date(b.due_date).getTime();
+          if (da !== db) return da - db;
+          return (PRIO[b.priority] || 0) - (PRIO[a.priority] || 0);
+        })
+        .slice(0, 10);
+    }
 
     function urgencyClass(due) {
       const now = new Date(); now.setHours(0, 0, 0, 0);
@@ -70,74 +81,130 @@
       return ['upcoming-future', `em ${days} d`];
     }
 
-    content.innerHTML = `
-      <div class="page-head">
-        <div>
-          <span class="eyebrow">Visão geral</span>
-          <h1>Olá, ${escapeHtml(me.name.split(' ')[0])}</h1>
-          <p class="lede">O que está a acontecer agora no estúdio.</p>
+    function render() {
+      // Filter cards to only those whose project matches the current includeArchived
+      // toggle. Default = active only. We do this client-side from the
+      // /api/projects list (which has all projects for admin).
+      const allowedStatuses = includeArchived
+        ? new Set(['active', 'completed', 'archived'])
+        : new Set(['active']);
+      const visibleProjectIds = new Set(
+        (includeArchived ? allProjects : projects).filter(p => allowedStatuses.has(p.status)).map(p => p.id)
+      );
+      // For the upcoming section, the cards are from the multi-board fetch
+      // (active-only by default). When the user flips the toggle on, we need
+      // to re-fetch the multi-board with include_status=all.
+      const upcoming = allCards
+        .filter(card => card.due_date && visibleProjectIds.has(card.project_id))
+        .sort((a, b) => {
+          const da = new Date(a.due_date).getTime();
+          const db = new Date(b.due_date).getTime();
+          if (da !== db) return da - db;
+          return (PRIO[b.priority] || 0) - (PRIO[a.priority] || 0);
+        })
+        .slice(0, 10);
+
+      // For "Projetos recentes" — use the projects list, filtered by the toggle.
+      const visibleProjects = (includeArchived ? allProjects : projects)
+        .filter(p => allowedStatuses.has(p.status))
+        .slice(0, 6);
+
+      content.innerHTML = `
+        <div class="page-head">
+          <div>
+            <span class="eyebrow">Visão geral</span>
+            <h1>Olá, ${escapeHtml(me.name.split(' ')[0])}</h1>
+            <p class="lede">O que está a acontecer agora no estúdio.</p>
+          </div>
+          <div class="actions">
+            <a class="btn ghost" href="/admin/board.html">Quadro geral</a>
+            <a class="btn ghost" href="/admin/financas.html">Finanças</a>
+            <a class="btn ghost" href="/admin/projetos.html">Ver projetos</a>
+            <a class="btn primary" href="/admin/clientes.html">+ Cliente</a>
+          </div>
         </div>
-        <div class="actions">
-          <a class="btn ghost" href="/admin/board.html">Quadro geral</a>
-          <a class="btn ghost" href="/admin/financas.html">Finanças</a>
-          <a class="btn ghost" href="/admin/projetos.html">Ver projetos</a>
-          <a class="btn primary" href="/admin/clientes.html">+ Cliente</a>
+
+        <div class="stats">
+          <a class="stat" href="/admin/clientes.html" style="text-decoration:none;color:inherit">
+            <div class="label">Clientes</div>
+            <div class="value">${clients.length}</div>
+            <div class="delta">${pendingClients} pendente${pendingClients === 1 ? '' : 's'}</div>
+          </a>
+          <a class="stat" href="/admin/projetos.html" style="text-decoration:none;color:inherit">
+            <div class="label">Projetos ativos</div>
+            <div class="value">${activeProjects}</div>
+            <div class="delta">${allProjects.length} no total${includeArchived ? '' : ' (incl. arquivados: ' + allProjects.filter(p => p.status === 'archived').length + ')'}</div>
+          </a>
+          <a class="stat" href="/admin/board.html" style="text-decoration:none;color:inherit">
+            <div class="label">Cartões no quadro</div>
+            <div class="value">${allCards.length}</div>
+            <div class="delta">${allCards.filter(c => c.due_date).length} com prazo</div>
+          </a>
         </div>
-      </div>
 
-      <div class="stats">
-        <a class="stat" href="/admin/clientes.html" style="text-decoration:none;color:inherit">
-          <div class="label">Clientes</div>
-          <div class="value">${clients.length}</div>
-          <div class="delta">${pendingClients} pendente${pendingClients === 1 ? '' : 's'}</div>
-        </a>
-        <a class="stat" href="/admin/projetos.html" style="text-decoration:none;color:inherit">
-          <div class="label">Projetos ativos</div>
-          <div class="value">${activeProjects}</div>
-          <div class="delta">${projects.length} no total</div>
-        </a>
-        <a class="stat" href="/admin/board.html" style="text-decoration:none;color:inherit">
-          <div class="label">Cartões no quadro</div>
-          <div class="value">${allCards.length}</div>
-          <div class="delta">${allCards.filter(c => c.due_date).length} com prazo</div>
-        </a>
-      </div>
+        <div class="overview-section-head">
+          <h2>Próximas tarefas</h2>
+          <label class="overview-toggle">
+            <input type="checkbox" id="inclArchived" ${includeArchived ? 'checked' : ''}>
+            <span>Incluir arquivados</span>
+          </label>
+        </div>
+        ${upcoming.length === 0
+          ? '<div class="upcoming-empty">Sem cartões com prazo. Defina datas de entrega nos cartões para os ver aqui.</div>'
+          : `<table class="table upcoming-table">
+              <thead><tr><th>Prioridade</th><th>Cartão</th><th>Projeto</th><th>Prazo</th><th></th></tr></thead>
+              <tbody>${upcoming.map(card => {
+                const proj = allProjects.find(p => p.id === card.project_id);
+                const [cls, label] = urgencyClass(card.due_date);
+                const prioClass = PRIORITY_DOT_CLASS[card.priority] || 'medium';
+                const prioLabel = PRIORITY_LABEL[card.priority] || card.priority || '';
+                const projArchived = proj && proj.status === 'archived';
+                return `
+                  <tr>
+                    <td><span class="cd-pill prio-${prioClass}"><span class="pill-dot"></span>${escapeHtml(prioLabel)}</span></td>
+                    <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}" style="color:inherit;text-decoration:none">${escapeHtml(card.title)}</a></td>
+                    <td>${escapeHtml(proj ? proj.name : '—')}${projArchived ? ' <span class="mono" style="font-size:.65rem;color:var(--graphite-60);margin-left:.4rem">arquivado</span>' : ''}</td>
+                    <td><span class="${cls}" style="font-family:var(--mono);font-size:.78rem">${label}</span></td>
+                    <td class="row-actions"><a class="btn sm ghost" href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}">Abrir ›</a></td>
+                  </tr>`;
+              }).join('')}</tbody>
+            </table>`}
 
-      <h2 style="margin:1.6rem 0 .7rem">Próximas tarefas</h2>
-      ${upcoming.length === 0
-        ? '<div class="upcoming-empty">Sem cartões com prazo. Defina datas de entrega nos cartões para os ver aqui.</div>'
-        : `<table class="table upcoming-table">
-            <thead><tr><th>Prioridade</th><th>Cartão</th><th>Projeto</th><th>Prazo</th><th></th></tr></thead>
-            <tbody>${upcoming.map(card => {
-              const proj = (b.projects || []).find(p => p.id === card.project_id);
-              const [cls, label] = urgencyClass(card.due_date);
-              const prioClass = PRIORITY_DOT_CLASS[card.priority] || 'medium';
-              const prioLabel = PRIORITY_LABEL[card.priority] || card.priority || '';
-              return `
-                <tr>
-                  <td><span class="cd-pill prio-${prioClass}"><span class="pill-dot"></span>${escapeHtml(prioLabel)}</span></td>
-                  <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}" style="color:inherit;text-decoration:none">${escapeHtml(card.title)}</a></td>
-                  <td>${escapeHtml(proj ? proj.name : '—')}</td>
-                  <td><span class="${cls}" style="font-family:var(--mono);font-size:.78rem">${label}</span></td>
-                  <td class="row-actions"><a class="btn sm ghost" href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}">Abrir ›</a></td>
-                </tr>`;
-            }).join('')}</tbody>
-          </table>`}
-
-      <h2 style="margin:1.6rem 0 .7rem">Projetos recentes</h2>
-      ${projects.length === 0
-        ? '<div class="empty">Sem projetos. <a href="/admin/projetos.html">Crie o primeiro</a>.</div>'
-        : `<table class="table"><thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th></tr></thead>
-          <tbody>${projects.slice(0, 6).map(p => `
-            <tr>
-              <td class="name"><a href="/admin/projeto.html?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
-              <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
-              <td>${p.hourly_rate != null ? `<span class="mono" style="font-size:.78rem">${Number(p.hourly_rate).toFixed(2).replace(/\.00$/, '')} €/h</span>` : '<span class="mono" style="color:var(--graphite-60);font-size:.78rem">—</span>'}</td>
-              <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : p.status === 'archived' ? 'archived' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status === 'archived' ? 'arquivado' : p.status}</span></td>
-              <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
-            </tr>
-          `).join('')}</tbody></table>`}
-    `;
+        <h2 style="margin:1.6rem 0 .7rem">Projetos recentes</h2>
+        ${visibleProjects.length === 0
+          ? '<div class="empty">Sem projetos. <a href="/admin/projetos.html">Crie o primeiro</a>.</div>'
+          : `<table class="table"><thead><tr><th>Nome</th><th>Cliente</th><th>€/h</th><th>Estado</th><th>Atualizado</th></tr></thead>
+            <tbody>${visibleProjects.map(p => `
+              <tr>
+                <td class="name"><a href="/admin/projeto.html?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.name)}</a><small>${escapeHtml(p.description || '—')}</small></td>
+                <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.75rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
+                <td>${p.hourly_rate != null ? `<span class="mono" style="font-size:.78rem">${Number(p.hourly_rate).toFixed(2).replace(/\.00$/, '')} €/h</span>` : '<span class="mono" style="color:var(--graphite-60);font-size:.78rem">—</span>'}</td>
+                <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : p.status === 'archived' ? 'archived' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status === 'archived' ? 'arquivado' : p.status}</span></td>
+                <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
+              </tr>
+            `).join('')}</tbody></table>`}
+      `;
+      // Wire the toggle AFTER innerHTML is set (the element is now in the DOM).
+      const toggle = document.getElementById('inclArchived');
+      if (toggle) {
+        toggle.addEventListener('change', async () => {
+          includeArchived = toggle.checked;
+          // If we're turning archived ON, we may need to fetch the multi-board
+          // with include_status=all so the cards list is complete.
+          if (includeArchived && allCards.every(c => !allProjects.find(p => p.id === c.project_id && p.status === 'archived'))) {
+            try {
+              const all = await api.boardAll(new URLSearchParams({ include_status: 'active,completed,archived' }));
+              // Merge new projects + cards in place (don't replace — we already
+              // have the active subset; we just need the additional ones).
+              for (const p of all.projects) if (!allProjects.find(x => x.id === p.id)) allProjects.push(p);
+              for (const c of all.cards) if (!allCards.find(x => x.id === c.id)) allCards.push(c);
+            } catch (e) { console.error('incl archived fetch failed', e); }
+          }
+          render();
+        });
+      }
+    }
+    render();
   </script>
 </body>
 </html>
