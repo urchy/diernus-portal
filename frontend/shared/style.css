@@ -292,6 +292,7 @@ h2 {
 .status-pill.active    { background: var(--clay-soft); color: var(--clay); }
 .status-pill.pending   { background: rgba(194,135,58,.15); color: var(--amber); }
 .status-pill.suspended { background: rgba(179,35,46,.12);  color: var(--stamp); }
+.status-pill.archived  { background: var(--graphite-08); color: var(--graphite-60); }
 .status-pill.online    { background: rgba(77,122,77,.14);  color: var(--green); }
 
 /* Role-change select on the Equipa page. Looks like a status-pill until
@@ -572,6 +573,31 @@ h2 {
 .kcard-ghost { opacity: .4; }
 .kcard-chosen { box-shadow: 0 8px 24px -6px rgba(31,29,23,.3); }
 .kcard-drag { transform: rotate(2deg); }
+
+/* ==========================================================================
+   ARCHIVED BANNER — shown above the board when a project is archived
+   (admin-only action; the banner is for everyone so the studio knows why
+   the board is read-only).
+   ========================================================================== */
+.archived-banner {
+  display: flex; align-items: center; gap: 1rem;
+  margin: 0 0 1.2rem;
+  padding: .85rem 1.1rem;
+  background: var(--clay-soft);
+  border: 1px solid var(--clay-15);
+  border-left: 4px solid var(--clay);
+  border-radius: 6px;
+  box-shadow: var(--shadow-card);
+}
+.archived-banner-text { display: flex; flex-direction: column; gap: .15rem; flex: 1; min-width: 0; }
+.archived-banner-eyebrow {
+  font-family: var(--sans); font-weight: 600; font-size: .68rem;
+  letter-spacing: .18em; text-transform: uppercase; color: var(--clay);
+}
+.archived-banner-text > span:last-child {
+  font-family: var(--body); font-size: .92rem; color: var(--graphite);
+  font-style: italic;
+}
 
 /* ==========================================================================
    CARD DETAIL (side panel)

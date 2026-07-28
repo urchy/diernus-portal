@@ -176,7 +176,7 @@
             <tr>
               <td class="name"><a href="/admin/projeto.html?id=${p.id}" style="color:inherit;text-decoration:none">${escapeHtml(p.name)}</a></td>
               <td>${escapeHtml(p.client_name)}<br><span class="mono" style="font-size:.72rem;color:var(--graphite-60)">${escapeHtml(p.client_email)}</span></td>
-              <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status}</span></td>
+              <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : p.status === 'archived' ? 'archived' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status === 'archived' ? 'arquivado' : p.status}</span></td>
               <td class="num mono">${p.hourly_rate != null ? Number(p.hourly_rate).toFixed(2).replace(/\.00$/, '') + ' €' : '—'}</td>
               <td class="num mono">${p.budget_hours != null ? formatHours(p.budget_hours) + ' h' : '—'}</td>
               <td class="num mono">${formatHours(p.estimated_hours)} h</td>

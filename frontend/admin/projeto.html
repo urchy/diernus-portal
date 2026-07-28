@@ -38,7 +38,7 @@
       loading.innerHTML = '<div class="spinner"></div><span>A carregar projeto…</span>';
       content.appendChild(loading);
       try {
-        await mountBoard(content, id, 'studio');
+        await mountBoard(content, id, 'studio', me);
         loading.remove();
       } catch (e) {
         loading.innerHTML = `<div class="error">Não foi possível carregar o projeto: ${escapeHtml(e.message || String(e))}<br><br><a class="btn ghost" href="/admin/projetos.html">‹ Voltar à lista</a></div>`;

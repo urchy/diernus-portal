@@ -3,7 +3,7 @@
 import { Hono } from 'hono';
 import type { AppVariables, Env, Project, User } from './types.js';
 import { requireAuth, requireStudio } from './middleware.js';
-import { isStudio, isClient } from './types.js';
+import { isStudio, isClient, isAdmin } from './types.js';
 import { uuid } from './crypto.js';
 import { createInvitation } from './invites.js';
 
@@ -25,8 +25,9 @@ const DEFAULT_COLUMNS = [
 // =========================================================================
 
 // GET /api/projects — list projects visible to the user
-//   admin/team → all projects
-//   client     → only projects where they're the client_id
+//   admin/team → all projects (incl. archived — they need the "Arquivados" tab to work)
+//   client     → only active/completed projects where they're the client_id
+//                (archived projects are hidden — they're admin-only history)
 projectRoutes.get('/', async (c) => {
   const u = c.get('user') as User;
   const sql = isStudio(u.role)
@@ -35,7 +36,7 @@ projectRoutes.get('/', async (c) => {
        ORDER BY p.updated_at DESC LIMIT 200`
     : `SELECT p.*, c.name AS client_name, c.email AS client_email, c.status AS client_status
        FROM projects p JOIN users c ON c.id = p.client_id
-       WHERE p.client_id = ?
+       WHERE p.client_id = ? AND p.status != 'archived'
        ORDER BY p.updated_at DESC LIMIT 200`;
   const stmt = c.env.DB.prepare(sql);
   const rows = isStudio(u.role) ? await stmt.all<Project & { client_name: string; client_email: string; client_status: string }>()
@@ -62,9 +63,15 @@ projectRoutes.get('/:id', async (c) => {
   return c.json({ project: proj, columns: cols.results });
 });
 
-// PATCH /api/projects/:id — update (admin + team). Status, name, description, hourly_rate, budget_hours.
+// PATCH /api/projects/:id — update (admin + team for most fields, admin-only for status).
+//   - name, description, hourly_rate, budget_hours, due_date → admin + team
+//   - status (active / completed / archived) → admin only — this is a meaningful
+//     state change that hides the project from the studio's active view, so it
+//     must be an explicit admin decision.
+//
 // hourly_rate and budget_hours accept floats (REAL in D1). We reject NaN/Infinity/out-of-range.
 projectRoutes.patch('/:id', requireStudio, async (c) => {
+  const me = c.get('user') as User;
   const existing = await c.env.DB
     .prepare('SELECT id FROM projects WHERE id = ?')
     .bind(c.req.param('id'))
@@ -72,6 +79,15 @@ projectRoutes.patch('/:id', requireStudio, async (c) => {
   if (!existing) return c.json({ error: 'projeto não encontrado' }, 404);
   const body = await c.req.json().catch(() => null) as Partial<Project> | null;
   if (!body) return c.json({ error: 'payload vazio' }, 400);
+
+  // Status changes (archive / unarchive / complete) are admin-only.
+  // Refuse early with 403 — don't leak whether the field is valid.
+  if (body.status !== undefined && !isAdmin(me.role)) {
+    return c.json({ error: 'mudar o estado do projeto é reservado a administradores' }, 403);
+  }
+  if (body.status !== undefined && !['active', 'completed', 'archived'].includes(body.status)) {
+    return c.json({ error: 'estado inválido (active|completed|archived)' }, 400);
+  }
 
   // Validate numeric fields when present. Empty string → null (clear the field).
   // Body is typed as Partial<Project> but in practice clients may send a string

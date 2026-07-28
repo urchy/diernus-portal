@@ -50,7 +50,7 @@
                   <tbody>${projects.map(p => `
                     <tr>
                       <td class="name">${escapeHtml(p.name)}</td>
-                      <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : 'suspended'}">${p.status}</span></td>
+                      <td><span class="status-pill ${p.status === 'active' ? 'online' : p.status === 'completed' ? 'active' : p.status === 'archived' ? 'archived' : 'suspended'}">${p.status === 'active' ? 'em curso' : p.status === 'completed' ? 'concluído' : p.status === 'archived' ? 'arquivado' : p.status}</span></td>
                       <td><span class="mono" style="color:var(--graphite-60);font-size:.8rem">${timeAgo(p.updated_at)}</span></td>
                     </tr>
                   `).join('')}</tbody>

@@ -26,9 +26,17 @@ function pluralise(n, singular, plural) {
  * @param projectId  string
  * @param access  'studio' | 'client'
  */
-export async function mountBoard(mountEl, projectId, access) {
+export async function mountBoard(mountEl, projectId, access, me) {
   const { project, columns, cards, summary } = await api.board(projectId);
-  const canEdit = access === 'studio';
+  const canEdit   = access === 'studio';
+  const isAdmin   = !!me && me.role === 'admin';
+  const isArchived = project.status === 'archived';
+  // Archived projects are read-only for everyone in the studio: no card adds,
+  // no edits, no drag-drop, no time entries. Comments are also locked —
+  // the project is closed. The board view remains browseable so the studio
+  // can still review the history. Clients don't see archived projects at all
+  // (the GET /api/projects endpoint already filters them out).
+  const readOnly  = !canEdit || isArchived;
 
   // header
   const header = document.createElement('div');
@@ -44,10 +52,29 @@ export async function mountBoard(mountEl, projectId, access) {
       ${project.budget_hours != null
         ? `<span class="meta-pill"><span class="meta-label">orçamento</span><span class="meta-value">${formatHours(project.budget_hours)} h</span></span>` : ''}
       <span class="meta-pill"><span class="meta-label">cartões</span><span class="meta-value">${cards.length}</span></span>
-      ${canEdit ? '<button class="btn sm ghost" id="editMeta">Editar preço/orçamento</button>' : ''}
+      ${isAdmin && !isArchived ? '<button class="btn sm ghost" id="archiveBtn">Arquivar</button>' : ''}
+      ${isAdmin && isArchived ? '<button class="btn sm ghost" id="unarchiveBtn">Reativar</button>' : ''}
+      ${canEdit && !isArchived ? '<button class="btn sm ghost" id="editMeta">Editar preço/orçamento</button>' : ''}
     </div>
   `;
   mountEl.appendChild(header);
+
+  // Archived banner — shown above the board when the project is archived.
+  // Gives context + a "Reativar" CTA for admins (already mirrored in the
+  // header, but having it in the banner too means a re-archived project
+  // isn't confusingly silent on the rest of the page).
+  if (isArchived) {
+    const banner = document.createElement('div');
+    banner.className = 'archived-banner';
+    banner.innerHTML = `
+      <div class="archived-banner-text">
+        <span class="archived-banner-eyebrow">Projeto arquivado</span>
+        <span>Este projeto está arquivado — não é possível adicionar cartões, comentários ou tempo.</span>
+      </div>
+      ${isAdmin ? '<button class="btn sm primary" id="unarchiveBtn2">Reativar projeto</button>' : ''}
+    `;
+    mountEl.appendChild(banner);
+  }
 
   // summary block
   if (summary) mountEl.appendChild(buildSummaryHeader(project, summary, canEdit));
@@ -75,16 +102,16 @@ export async function mountBoard(mountEl, projectId, access) {
         <span class="kcol-count">${colCards.length}</span>
       </div>
       <div class="kcol-cards" data-col-id="${c.id}"></div>
-      ${canEdit ? `<button class="kcol-add" data-col-id="${c.id}">+ Cartão</button>` : ''}
+      ${canEdit && !isArchived ? `<button class="kcol-add" data-col-id="${c.id}">+ Cartão</button>` : ''}
     `;
     const list = col.querySelector('.kcol-cards');
-    for (const card of colCards) list.appendChild(renderCard(card, canEdit));
+    for (const card of colCards) list.appendChild(renderCard(card, canEdit, isArchived));
     board.appendChild(col);
   }
   mountEl.appendChild(board);
 
-  // drag-and-drop (only if studio)
-  if (canEdit && window.Sortable) {
+  // drag-and-drop (only if studio AND project is not archived)
+  if (canEdit && !isArchived && window.Sortable) {
     for (const list of board.querySelectorAll('.kcol-cards')) {
       window.Sortable.create(list, {
         group: 'kanban',
@@ -124,12 +151,45 @@ export async function mountBoard(mountEl, projectId, access) {
     const cardEl = e.target.closest('.kcard');
     if (!cardEl) return;
     e.preventDefault();
-    openCardDetail(cardEl.dataset.cardId, canEdit, () => refresh(board, mountEl, projectId, access), projectId);
+    openCardDetail(cardEl.dataset.cardId, readOnly, () => refresh(board, mountEl, projectId, access, me), projectId);
   });
 
   // "Editar preço/orçamento" button
   const editMeta = header.querySelector('#editMeta');
   if (editMeta) editMeta.addEventListener('click', () => openEditMetaModal(project, () => location.reload()));
+
+  // "Arquivar" / "Reativar" buttons (admin only).
+  // Both call PATCH /api/projects/:id with status='archived'|'active'.
+  // The worker validates the new status AND that the caller is admin
+  // (so a non-admin who somehow gets here gets a 403 from the server).
+  async function setProjectStatus(newStatus, confirmMsg, successMsg) {
+    if (!confirm(confirmMsg)) return;
+    try {
+      await api.updateProject(projectId, { status: newStatus });
+      showToast(successMsg);
+      // Reload to re-render the board with the new state (header button
+      // swaps, banner appears/disappears, kcol-add buttons hide/show).
+      location.reload();
+    } catch (e) {
+      alert('Erro: ' + e.message);
+    }
+  }
+  const archiveBtn = header.querySelector('#archiveBtn');
+  if (archiveBtn) archiveBtn.addEventListener('click', () =>
+    setProjectStatus('archived',
+      'Arquivar este projeto? Não será mostrado em "Ativos" nem no portal do cliente, mas mantém-se aqui para consulta.',
+      'Projeto arquivado'));
+  const unarchiveBtn = header.querySelector('#unarchiveBtn');
+  if (unarchiveBtn) unarchiveBtn.addEventListener('click', () =>
+    setProjectStatus('active',
+      'Reativar este projeto? Volta a aparecer em "Ativos" e no portal do cliente.',
+      'Projeto reativado'));
+  // The duplicate button in the archived banner — same handler.
+  const unarchiveBtn2 = mountEl.querySelector('#unarchiveBtn2');
+  if (unarchiveBtn2) unarchiveBtn2.addEventListener('click', () =>
+    setProjectStatus('active',
+      'Reativar este projeto? Volta a aparecer em "Ativos" e no portal do cliente.',
+      'Projeto reativado'));
 }
 
 function renderCard(card, canEdit) {
@@ -162,16 +222,17 @@ function refreshColumnCounts(board) {
   }
 }
 
-async function refresh(board, mountEl, projectId, access) {
+async function refresh(board, mountEl, projectId, access, me) {
   // re-fetch the board and re-render (simpler than patching in place).
   // The project page appends its own content (e.g. project files) after
   // the kanban, so we only strip the elements owned by mountBoard —
-  // the kanban, the page-head, and the summary block. Anything added by
-  // the page (back-link, files section) stays put.
+  // the kanban, the page-head, the summary, the archived banner.
+  // Anything added by the page (back-link, files section) stays put.
   mountEl.querySelectorAll('.kanban').forEach(n => n.remove());
   mountEl.querySelectorAll('.board-head').forEach(n => n.remove());
   mountEl.querySelectorAll('.summary').forEach(n => n.remove());
-  await mountBoard(mountEl, projectId, access);
+  mountEl.querySelectorAll('.archived-banner').forEach(n => n.remove());
+  await mountBoard(mountEl, projectId, access, me);
   // re-mount handler
   // (handlers re-bind via the new mount; no need to re-attach)
 }
