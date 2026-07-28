@@ -46,6 +46,12 @@ export const api = {
   // Confirm a pending email change. Token comes from the link sent to the
   // NEW email address. Public route — no JWT required.
   confirmEmailChange: (token) => request('/api/auth/email-change/confirm?token=' + encodeURIComponent(token)),
+  // Forgot-password flow.
+  //   forgotPassword(email) — always resolves to {ok:true} (no enumeration).
+  //   resetPassword(token, newPassword) — returns {ok:true} or throws.
+  // Both are public routes (no JWT required).
+  forgotPassword: (email) => request('/api/auth/forgot-password', { method: 'POST', body: { email } }),
+  resetPassword: (token, newPassword) => request('/api/auth/reset-password', { method: 'POST', body: { token, newPassword } }),
 
   // Clients (studio)
   clients:    () => request('/api/clients'),

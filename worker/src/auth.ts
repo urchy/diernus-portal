@@ -3,7 +3,7 @@ import { Hono } from 'hono';
 import type { AppVariables, Env, User, Invitation } from './types.js';
 import { hashPassword, verifyPassword, signJwt, uuid, randomToken } from './crypto.js';
 import { setSessionCookie, clearSessionCookie, requireAuth } from './middleware.js';
-import { sendEmail, emailChangeEmail } from './resend.js';
+import { sendEmail, emailChangeEmail, passwordResetEmail } from './resend.js';
 
 export const authRoutes = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -441,4 +441,111 @@ authRoutes.get('/google/callback', async (c) => {
     dest = frontend + (userRole === 'client' ? '/portal/' : '/admin/');
   }
   return c.redirect(dest);
+});
+
+// =========================================================================
+// Forgot-password / reset-password (public — no auth required)
+// =========================================================================
+//
+// Flow:
+//   1. User submits their email at POST /api/auth/forgot-password.
+//   2. If the email matches an active user, we create a one-time row in
+//      `password_resets` and email a link to /reset-password.html?token=…
+//      The link is valid for 15 minutes.
+//   3. User clicks the link, lands on /reset-password.html, enters a
+//      new password.
+//   4. We POST to /api/auth/reset-password with the token + new password.
+//      The token must be unused + not expired, we hash the new password,
+//      update users.password_hash, set password_changed_at (so any other
+//      sessions are invalidated by the middleware), and mark the reset
+//      row as used.
+//
+// Anti-enumeration: the response of /forgot-password is always
+// { ok: true } regardless of whether the email exists. Only the actual
+// email reveal whether the account is real.
+//
+// Rate limit: we only create a new reset if the user doesn't already have
+// a recent (unexpired, unused) one. Effective cap: one email per 15 min.
+
+// How long the reset link is valid
+const RESET_TTL_MIN = 15;
+
+authRoutes.post('/forgot-password', async (c) => {
+  const body = await c.req.json().catch(() => null) as { email?: string } | null;
+  // Always respond the same — don't leak whether the email exists.
+  const genericOk = c.json({ ok: true });
+  if (!body?.email) return genericOk;
+  const email = body.email.toLowerCase().trim();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return genericOk;  // invalid format → silent
+
+  const user = await c.env.DB
+    .prepare('SELECT id, name, status FROM users WHERE email = ?')
+    .bind(email)
+    .first<{ id: string; name: string; status: string }>();
+  if (!user || user.status !== 'active') return genericOk;  // no such user / suspended → silent
+
+  // Rate limit: skip if there's an unused, unexpired reset already
+  const recent = await c.env.DB
+    .prepare(`SELECT id FROM password_resets
+              WHERE user_id = ? AND used_at IS NULL AND expires_at > datetime('now')
+              LIMIT 1`)
+    .bind(user.id)
+    .first<{ id: string }>();
+  if (recent) {
+    console.log(`[auth.ts] forgot-password rate-limited for ${email} (recent reset still valid)`);
+    return genericOk;
+  }
+
+  // Issue a new token
+  const id = uuid();
+  const token = randomToken(32);
+  const expiresAt = new Date(Date.now() + RESET_TTL_MIN * 60 * 1000).toISOString();
+  await c.env.DB
+    .prepare(`INSERT INTO password_resets (id, user_id, token, expires_at)
+              VALUES (?, ?, ?, ?)`)
+    .bind(id, user.id, token, expiresAt)
+    .run();
+
+  // Email the link (fire-and-forget)
+  const resetUrl = `${c.env.PUBLIC_URL.replace(/\/$/, '')}/reset-password.html?token=${encodeURIComponent(token)}`;
+  const tpl = passwordResetEmail({ name: user.name, resetUrl, expiresInMinutes: RESET_TTL_MIN });
+  c.executionCtx.waitUntil(
+    sendEmail(c.env, { to: email, subject: tpl.subject, html: tpl.html, text: tpl.text })
+      .catch(err => console.error(`[auth.ts] password reset email to ${email} failed:`, err.message))
+  );
+
+  return genericOk;
+});
+
+// POST /api/auth/reset-password — apply the new password.
+// Body: { token, newPassword }
+// Validates the token (unused, unexpired), hashes the new password, updates
+// the user. Sets password_changed_at so the middleware invalidates any
+// other session this user has open (same as PATCH /me with newPassword).
+authRoutes.post('/reset-password', async (c) => {
+  const body = await c.req.json().catch(() => null) as { token?: string; newPassword?: string } | null;
+  if (!body?.token || !body.newPassword) {
+    return c.json({ error: 'token e nova palavra-passe são obrigatórios' }, 400);
+  }
+  if (body.newPassword.length < 8) {
+    return c.json({ error: 'a nova palavra-passe tem de ter pelo menos 8 caracteres' }, 400);
+  }
+
+  const row = await c.env.DB
+    .prepare(`SELECT id, user_id, expires_at, used_at FROM password_resets WHERE token = ?`)
+    .bind(body.token)
+    .first<{ id: string; user_id: string; expires_at: string; used_at: string | null }>();
+  if (!row) return c.json({ error: 'pedido não encontrado' }, 404);
+  if (row.used_at) return c.json({ error: 'este pedido já foi utilizado' }, 410);
+  if (new Date(row.expires_at) < new Date()) return c.json({ error: 'pedido expirado' }, 410);
+
+  const hash = await hashPassword(body.newPassword);
+  await c.env.DB.batch([
+    c.env.DB.prepare('UPDATE users SET password_hash = ?, password_changed_at = datetime(\'now\') WHERE id = ?')
+      .bind(hash, row.user_id),
+    c.env.DB.prepare('UPDATE password_resets SET used_at = datetime(\'now\') WHERE id = ?')
+      .bind(row.id),
+  ]);
+
+  return c.json({ ok: true });
 });

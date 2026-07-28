@@ -336,7 +336,43 @@ ${args.portalUrl}
   return { subject, html, text };
 }
 
-// --- Payment-due email (hook from a future invoicing module) ---
+// --- Password-reset email ---
+// Sent when the user clicks "Esqueci-me da palavra-passe" on the login
+// page. Two-step verification: the password only changes when the user
+// clicks the link in this email. Without it, the existing password stays.
+export function passwordResetEmail(args: {
+  name: string;
+  resetUrl: string;
+  expiresInMinutes: number;
+}): { subject: string; html: string; text: string } {
+  const subject = `Pedido de alteração de palavra-passe · Diernus`;
+  const body =
+`Recebemos um pedido para alterar a sua palavra-passe no portal Diernus.<br><br>
+Se foi você, clique no botão abaixo para definir uma nova palavra-passe. Se não foi, ignore este email — a sua conta mantém a palavra-passe anterior.<br><br>
+Por segurança, este link expira em <b>${args.expiresInMinutes} minutos</b> e só pode ser utilizado uma vez.`;
+  const text =
+`Olá ${args.name},
+
+Recebemos um pedido para alterar a sua palavra-passe no portal Diernus.
+
+Se foi você, clique aqui para definir uma nova palavra-passe:
+${args.resetUrl}
+
+Se não foi você, ignore este email — a sua conta mantém a palavra-passe anterior.
+
+Por segurança, este link expira em ${args.expiresInMinutes} minutos e só pode ser utilizado uma vez.
+
+— Diernus`;
+  const html = shell({
+    eyebrow: 'DIERNUS · PALAVRA-PASSE',
+    heading: `Pedido de alteração de palavra-passe`,
+    bodyHtml: body,
+    ctaText: 'ALTERAR PALAVRA-PASSE',
+    ctaUrl: args.resetUrl,
+    footer: 'Enviado porque alguém pediu para alterar a palavra-passe desta conta. Se não foi você, pode ignorar.',
+  });
+  return { subject, html, text };
+}
 // No invoicing module yet — this is the email template + helper that a
 // future POST /api/invoices / PUT /api/invoices/:id/... route will call
 // when an invoice becomes payable. For now, the only way to fire it is

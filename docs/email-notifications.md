@@ -49,6 +49,7 @@ whether the email send succeeds — they're independent.
 | 8 | `client_invited` | Auto-sent when admin creates a client (POST /api/clients) | the new client | **DONE** |
 | 9 | `weekly_summary` | Cron: Monday 09:00 Europe/Lisbon (`0 8 * * 1` UTC) | studio (per-member breakdown of the previous week) | **DONE** |
 | 10 | `payment_due` | Template + helper, fired by `POST /api/invoices/test` (admin-only) until the invoicing module lands | client | **DONE** (template + test endpoint; real invoicing module still TBD) |
+| 11 | `password_reset` | User submits email at `/forgot-password.html`; one-time link, 15 min, single-use | the user | **DONE** |
 
 ## How to add a new type (worked example: `project_completed`)
 

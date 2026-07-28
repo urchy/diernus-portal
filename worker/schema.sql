@@ -69,6 +69,24 @@ ALTER TABLE projects ADD COLUMN due_date TEXT;
 ALTER TABLE users ADD COLUMN password_changed_at TEXT;
 
 -- =========================================================================
+-- password_resets — one-time tokens for the "forgot password" flow
+--   POST /api/auth/forgot-password → creates a row (rate-limited per user)
+--   POST /api/auth/reset-password  → validates token, sets used_at
+-- Same pattern as email_changes.
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS password_resets (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  token       TEXT UNIQUE NOT NULL,
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token);
+CREATE INDEX IF NOT EXISTS idx_password_resets_user  ON password_resets(user_id, used_at);
+
+-- =========================================================================
 -- email_changes — two-step email change confirmation
 -- User submits a new email → we send a one-time link to the NEW address.
 -- Old email stays active until they click the link. The most recent

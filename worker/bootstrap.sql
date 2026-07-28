@@ -212,3 +212,18 @@ CREATE TABLE IF NOT EXISTS email_changes (
 );
 CREATE INDEX IF NOT EXISTS idx_email_changes_token ON email_changes(token);
 CREATE INDEX IF NOT EXISTS idx_email_changes_user  ON email_changes(user_id, accepted_at);
+
+-- =========================================================================
+-- password_resets — one-time tokens for the "forgot password" flow
+-- =========================================================================
+CREATE TABLE IF NOT EXISTS password_resets (
+  id          TEXT PRIMARY KEY,
+  user_id     TEXT NOT NULL,
+  token       TEXT UNIQUE NOT NULL,
+  expires_at  TEXT NOT NULL,
+  used_at     TEXT,
+  created_at  TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_password_resets_token ON password_resets(token);
+CREATE INDEX IF NOT EXISTS idx_password_resets_user  ON password_resets(user_id, used_at);
