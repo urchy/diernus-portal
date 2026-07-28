@@ -18,7 +18,7 @@ PROD_WEB   ?= https://portal.diernus.com
 STG_API    ?= https://diernus-portal-api-staging.silva-andre-daniel.workers.dev/api
 STG_WEB    ?= https://diernus-portal-staging.pages.dev
 
-.PHONY: help install dev dev-worker dev-frontend deploy-worker deploy-frontend deploy deploy-staging logs status schema seed secret-whoami setup-staging-secrets seed-staging seed-staging-fresh add-staging-domain test test-prod test-staging
+.PHONY: help install dev dev-worker dev-frontend deploy-worker deploy-frontend deploy deploy-staging logs status schema seed secret-whoami setup-staging-secrets seed-staging seed-staging-fresh add-staging-domain test test-prod test-staging backup-prod backup-staging backup-list backup-restore
 
 help:
 	@echo "Diernus Portal — Makefile"
@@ -43,6 +43,11 @@ help:
 	@echo "  make test                run the full regression against both prod + staging"
 	@echo "  make test-prod           run the regression against production only"
 	@echo "  make test-staging        run the regression against staging only (uses seeded IDs)"
+	@echo ""
+	@echo "  make backup-prod         export prod D1 to R2 (today's SQL + prune old)"
+	@echo "  make backup-staging      same for staging (test data — manual only)"
+	@echo "  make backup-list         list existing backups in R2"
+	@echo "  make backup-restore DATE=YYYY-MM-DD  download a backup to ./backups/"
 	@echo ""
 	@echo "  make logs                tail worker logs"
 	@echo "  make status              show deploys + project state"
@@ -141,3 +146,20 @@ test-staging:
 
 test: test-prod test-staging
 	@echo "✓ all regressions complete"
+
+# --- D1 backups (prod runs nightly via GitHub Actions; these are for ad-hoc use) ---
+# Required env: CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID (same as for the workflow).
+# The script picks the right D1 based on the target name.
+
+backup-prod:
+	ENV_NAME=prod bash scripts/backup-d1.sh
+
+backup-staging:
+	ENV_NAME=staging bash scripts/backup-d1.sh
+
+backup-list:
+	bash scripts/backup-d1.sh --list
+
+backup-restore:
+	@[ -n "$(DATE)" ] || (echo "usage: make backup-restore DATE=YYYY-MM-DD" >&2; exit 1)
+	bash scripts/backup-d1.sh --restore=$(DATE)
