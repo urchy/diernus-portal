@@ -275,6 +275,122 @@ ${args.projectUrl}
   return { subject, html, text };
 }
 
+// --- Weekly summary email (cron: Monday 9am) ---
+// Sent to each active studio member with their personal breakdown of the
+// previous week (Mon→Sun): hours logged, projects touched, cards
+// commented on. Future iterations could also include "unbilled hours"
+// and per-project revenue.
+export function weeklySummaryEmail(args: {
+  recipientName: string;
+  weekStart: string;   // e.g. "13 jul 2026"
+  weekEnd: string;     // e.g. "19 jul 2026"
+  totalHours: number;
+  totalEntries: number;
+  projectsTouched: number;
+  perProject: { name: string; hours: number }[];   // top 3, biggest first
+  portalUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Resumo semanal: ${formatHours(args.totalHours)}h · ${args.weekStart}–${args.weekEnd}`;
+  const ppRows = args.perProject.length
+    ? `<table style="border-collapse:collapse;width:100%;margin:8px 0 0 0">
+         ${args.perProject.map(p => `
+           <tr>
+             <td style="padding:6px 0;font-size:.95rem">${escapeHtml(p.name)}</td>
+             <td style="padding:6px 0;text-align:right;font-family:monospace;font-size:.95rem">${formatHours(p.hours)}h</td>
+           </tr>`).join('')}
+       </table>`
+    : '<p style="margin:8px 0 0 0;color:rgba(35,33,28,.6)">Sem horas registadas esta semana.</p>';
+  const body =
+`Aqui está o resumo da semana de <b>${escapeHtml(args.weekStart)}</b> a <b>${escapeHtml(args.weekEnd)}</b>:<br><br>
+
+<div style="background:rgba(44,73,199,.05);border-left:3px solid #2C49C7;padding:12px 16px;margin:8px 0">
+  <div style="font-size:2rem;font-weight:700;line-height:1">${formatHours(args.totalHours)}h</div>
+  <div style="font-size:.85rem;color:rgba(35,33,28,.6);margin-top:2px">${args.totalEntries} ${args.totalEntries === 1 ? 'registo' : 'registos'} em ${args.projectsTouched} ${args.projectsTouched === 1 ? 'projeto' : 'projetos'}</div>
+</div>
+
+<b>Por projeto:</b>
+${ppRows}
+
+Abra o portal para ver o detalhe dia-a-dia.`;
+  const text =
+`Olá ${args.recipientName},
+
+Resumo da semana de ${args.weekStart} a ${args.weekEnd}:
+
+  ${formatHours(args.totalHours)}h  (${args.totalEntries} registos em ${args.projectsTouched} projetos)
+
+${args.perProject.length ? 'Por projeto:\n' + args.perProject.map(p => `  · ${p.name}: ${formatHours(p.hours)}h`).join('\n') + '\n' : 'Sem horas registadas esta semana.\n'}
+
+Ver detalhe no portal:
+${args.portalUrl}
+
+— Diernus`;
+  const html = shell({
+    eyebrow: 'DIERNUS · RESUMO SEMANAL',
+    heading: `A tua semana em números, ${escapeHtml(args.recipientName)}`,
+    bodyHtml: body,
+    ctaText: 'ABRIR PORTAL',
+    ctaUrl: args.portalUrl,
+    footer: 'Enviado todas as segundas-feiras às 9:00 com o resumo da semana anterior.',
+  });
+  return { subject, html, text };
+}
+
+// --- Payment-due email (hook from a future invoicing module) ---
+// No invoicing module yet — this is the email template + helper that a
+// future POST /api/invoices / PUT /api/invoices/:id/... route will call
+// when an invoice becomes payable. For now, the only way to fire it is
+// POST /api/invoices/test (admin-only) so we can verify the template
+// looks right end-to-end.
+export function paymentDueEmail(args: {
+  clientName: string;
+  projectName: string;
+  invoiceNumber: string;
+  amount: string;          // pre-formatted, e.g. "€ 1.250,00"
+  dueDate: string;         // e.g. "15 ago 2026"
+  payUrl: string;
+}): { subject: string; html: string; text: string } {
+  const subject = `Fatura ${args.invoiceNumber} · ${args.projectName} · vence a ${args.dueDate}`;
+  const body =
+`A fatura <b>${escapeHtml(args.invoiceNumber)}</b> do projeto <b>${escapeHtml(args.projectName)}</b> está em aberto e vence a <b>${escapeHtml(args.dueDate)}</b>.<br><br>
+
+<div style="background:rgba(44,73,199,.05);border-left:3px solid #2C49C7;padding:12px 16px;margin:8px 0">
+  <div style="font-size:1.6rem;font-weight:700;line-height:1">${escapeHtml(args.amount)}</div>
+  <div style="font-size:.85rem;color:rgba(35,33,28,.6);margin-top:2px">Vencimento: ${escapeHtml(args.dueDate)}</div>
+</div>
+
+Pode pagar a partir do portal usando o botão abaixo. Se já liquidou esta fatura, por favor ignore este email.`;
+  const text =
+`Olá ${args.clientName},
+
+A fatura ${args.invoiceNumber} do projeto "${args.projectName}" está em aberto e vence a ${args.dueDate}.
+
+  ${args.amount}
+  Vencimento: ${args.dueDate}
+
+Pode pagar a partir do portal:
+${args.payUrl}
+
+Se já liquidou esta fatura, ignore este email.
+
+— Diernus`;
+  const html = shell({
+    eyebrow: 'DIERNUS · FATURA',
+    heading: `Fatura em aberto, ${escapeHtml(args.clientName)}`,
+    bodyHtml: body,
+    ctaText: 'PAGAR AGORA',
+    ctaUrl: args.payUrl,
+    footer: 'Enviado porque existe uma fatura em aberto no projeto.',
+  });
+  return { subject, html, text };
+}
+
+function formatHours(h: number): string {
+  if (h == null) return '0';
+  if (Number.isInteger(h)) return String(h);
+  return h.toFixed(1).replace(/\.0$/, '');
+}
+
 function escapeHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')

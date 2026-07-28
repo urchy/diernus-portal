@@ -14,6 +14,8 @@ import { teamRoutes } from './team.js';
 import { timeRoutes } from './time.js';
 import { financeRoutes } from './finance.js';
 import { notificationRoutes } from './notifications.js';
+import { invoiceRoutes } from './invoices.js';
+import { handleScheduled } from './cron.js';
 
 const app = new Hono<{ Bindings: Env; Variables: AppVariables }>();
 
@@ -46,6 +48,7 @@ app.route('/api/team', teamRoutes);
 app.route('/api/clients', clientRoutes);
 app.route('/api/finance', financeRoutes);
 app.route('/api/notifications', notificationRoutes);
+app.route('/api/invoices', invoiceRoutes);
 app.route('/api', cardRoutes);       // /api/projects/:id/board, /api/cards/:id, etc.
 app.route('/api', commentRoutes);    // /api/cards/:cardId/comments
 app.route('/api', fileRoutes);       // /api/projects/:id/files, /api/files/:id
@@ -57,4 +60,10 @@ app.onError((err, c) => {
   return c.json({ error: 'internal error', message: (err as Error).message }, 500);
 });
 
-export default app;
+// Cloudflare Workers export shape: { fetch, scheduled }.
+// `fetch` handles HTTP; `scheduled` runs on the cron triggers in
+// wrangler.toml ([triggers].crons). See cron.ts for the handlers.
+export default {
+  fetch: app.fetch,
+  scheduled: handleScheduled,
+};

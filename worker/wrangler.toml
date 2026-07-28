@@ -24,6 +24,23 @@ id = "359aa1e3bf0f44a0a74100646d0a49a0"
 ENVIRONMENT = "production"
 MAX_UPLOAD_MB = "50"
 
+# Cron triggers (top-level = default env = production).
+#   "0 8 * * 1"  = every Monday at 08:00 UTC = 09:00 Europe/Lisbon in summer,
+#                                       08:00 in winter. (Cloudflare cron
+#                                       is always UTC; we tolerate the
+#                                       1-hour DST drift.)
+# All scheduled work is dispatched in src/cron.ts.
+# Staging is excluded explicitly below so test seeds don't trigger
+# emails to real addresses.
+[triggers]
+crons = ["0 8 * * 1"]
+
+# Explicit empty cron for staging — overrides the top-level triggers.
+# Without this override, staging would inherit "0 8 * * 1" and try to
+# email the seeded studio members every Monday.
+[env.staging.triggers]
+crons = []
+
 # =========================================================================
 # Staging environment
 # Separate D1 (diernus-portal-db-staging), different PUBLIC_URL so emails

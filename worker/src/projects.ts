@@ -162,15 +162,28 @@ clientRoutes.get('/:id', async (c) => {
   return c.json({ client: u, projects: projects.results, invitations: invites.results });
 });
 
-// POST /api/clients — create a pending client (NO email sent)
-// Admin creates the record; they can send the invite later via POST /api/clients/:id/invite
+// POST /api/clients — create a pending client AND auto-send the invite email.
+//
+// Per the email roadmap (#8, client_invited): when an admin creates a new
+// client, the system sends the invite link in the background rather than
+// returning an accept_url that the admin has to copy/paste. If Resend fails
+// the admin can still recover via POST /api/clients/:id/invite (re-send).
 clientRoutes.post('/', async (c) => {
+  const me = c.get('user') as User;
   const body = await c.req.json().catch(() => null) as { email?: string; name?: string } | null;
   if (!body?.email || !body?.name) return c.json({ error: 'email e nome são obrigatórios' }, 400);
   const email = body.email.toLowerCase().trim();
   const name = body.name.trim();
   const existing = await c.env.DB.prepare('SELECT id FROM users WHERE email = ?').bind(email).first<{ id: string }>();
   if (existing) return c.json({ error: 'já existe uma conta com este email' }, 409);
+
+  // Reuse the same refuse-pending-invite guard as /:id/invite so we don't
+  // create duplicate tokens if the admin retries quickly.
+  const pending = await c.env.DB
+    .prepare(`SELECT id FROM invitations WHERE email = ? AND accepted_at IS NULL AND expires_at > datetime('now')`)
+    .bind(email)
+    .first<{ id: string }>();
+  if (pending) return c.json({ error: 'já existe um convite pendente para este email — use "Reenviar convite"' }, 409);
 
   const id = uuid();
   // password_hash is NOT NULL in the schema, so for pending users we store a
@@ -182,7 +195,27 @@ clientRoutes.post('/', async (c) => {
     .bind(id, email, placeholder, name)
     .run();
   const u = await c.env.DB.prepare('SELECT id, email, name, role, status, created_at FROM users WHERE id = ?').bind(id).first<User>();
-  return c.json({ client: u }, 201);
+
+  // Auto-send the invite email (fire-and-forget — never block the response).
+  // createInvitation() returns the invitation; if Resend fails, the
+  // returned invitation has an accept_url we surface in the response so
+  // the admin can still hand it off manually.
+  let accept_url: string | null = null;
+  let warning: string | undefined;
+  try {
+    const res = await createInvitation(c.env, { email, name, role: 'client', invitedBy: me.id });
+    if (res.invitation.accept_url) {
+      accept_url = res.invitation.accept_url;
+      warning = res.warning;
+    }
+  } catch (err) {
+    // The createInvitation() helper catches Resend failures internally,
+    // so a thrown error here is something more serious (DB write etc).
+    // Log and move on — the client record is created regardless.
+    console.error(`[projects.ts] auto-invite for ${email} failed:`, (err as Error).message);
+    warning = `convite criado mas email falhou: ${(err as Error).message}`;
+  }
+  return c.json({ client: u, accept_url, warning }, 201);
 });
 
 function randomPlaceholder(): string {
