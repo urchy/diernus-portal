@@ -15,11 +15,7 @@ import { $, escapeHtml, initials, timeAgo, showToast } from './layout.js';
 import { openCardDetail, openNewCardModal } from './board.js';
 
 const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
-const PRIORITY_COLOR = {
-  low:    { bg: 'rgba(35,33,28,.08)',  fg: 'var(--graphite-60)' },
-  medium: { bg: 'rgba(44,73,199,.12)',  fg: 'var(--cobalt)' },
-  high:   { bg: 'rgba(179,35,46,.12)',  fg: 'var(--stamp)' },
-};
+const PRIORITY_DOT_CLASS = { low: 'low', medium: 'medium', high: 'high' };
 
 // Default column names every project ships with. We use them to bucket
 // cards into the unified 3-column view, regardless of the project's
@@ -314,7 +310,8 @@ function renderCard(card, projects, projectColor, focused) {
   const div = document.createElement('div');
   div.className = 'kcard';
   div.dataset.cardId = card.id;
-  const p = PRIORITY_COLOR[card.priority] || PRIORITY_COLOR.medium;
+  const prioClass = PRIORITY_DOT_CLASS[card.priority] || 'medium';
+  const prioLabel = PRIORITY_LABEL[card.priority] || card.priority || '';
   const due = card.due_date ? new Date(card.due_date).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' }) : '';
   const comments = card.comment_count || 0;
   const isOverdue = card.due_date && new Date(card.due_date) < new Date() && card.priority !== 'low';
@@ -326,7 +323,7 @@ function renderCard(card, projects, projectColor, focused) {
     ${showProjectPill
       ? `<div class="kcard-project" style="background:${projColor}" title="${escapeHtml(projName)}">${escapeHtml(projName)}</div>`
       : ''}
-    <div class="kcard-prio" style="background:${p.bg};color:${p.fg}">${PRIORITY_LABEL[card.priority] || card.priority}</div>
+    <div class="kcard-prio ${prioClass}" role="img" aria-label="Prioridade: ${escapeHtml(prioLabel)}" title="Prioridade: ${escapeHtml(prioLabel)}"></div>
     <div class="kcard-title">${escapeHtml(card.title)}</div>
     <div class="kcard-meta">
       ${due ? `<span class="kcard-due ${isOverdue ? 'overdue' : ''}">${due}</span>` : ''}

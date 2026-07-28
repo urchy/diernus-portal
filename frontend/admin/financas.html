@@ -80,7 +80,7 @@
             <div class="fin-stat-value">${t.projects}</div>
             <div class="fin-stat-sub">${t.active_projects} ativos · ${t.completed_projects} concluídos</div>
             <div class="fin-stat-bar">
-              <div class="fin-stat-bar-fill" style="width:${t.projects > 0 ? Math.round((t.completed_projects / t.projects) * 100) : 0}%;background:var(--cobalt)"></div>
+              <div class="fin-stat-bar-fill" style="width:${t.projects > 0 ? Math.round((t.completed_projects / t.projects) * 100) : 0}%;background:var(--clay)"></div>
             </div>
             <div class="fin-stat-sub" style="margin-top:.2rem">${t.projects > 0 ? Math.round((t.completed_projects / t.projects) * 100) : 0}% concluído</div>
           </div>
@@ -119,7 +119,7 @@
         const h = Math.max(2, (m.hours / max) * H);
         const x = i * barW;
         const y = H - h;
-        return `<rect x="${x + 1}" y="${y}" width="${barW - 2}" height="${h}" rx="1" fill="${m.hours > 0 ? 'var(--cobalt)' : 'var(--graphite-15)'}"></rect>`;
+        return `<rect x="${x + 1}" y="${y}" width="${barW - 2}" height="${h}" rx="1" fill="${m.hours > 0 ? 'var(--clay)' : 'var(--graphite-15)'}"></rect>`;
       }).join('');
       return `<svg class="fin-spark" viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" role="presentation">${bars}</svg>`;
     }
@@ -131,7 +131,7 @@
         const h = (m.hours / max) * (H - 40);
         const x = 20 + i * barW;
         const y = H - 20 - h;
-        const fill = m.hours > 0 ? 'var(--cobalt)' : 'var(--graphite-15)';
+        const fill = m.hours > 0 ? 'var(--clay)' : 'var(--graphite-15)';
         return `
           <g>
             <rect x="${x + 4}" y="${y}" width="${barW - 8}" height="${h}" rx="3" fill="${fill}"></rect>

@@ -12,45 +12,72 @@
          staging:  diernus-portal-api.silva-andre-daniel.workers.dev
          prod:     diernus-portal-api.diernus.com -->
   <meta name="api-base" content="https://diernus-portal-api.diernus.com">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%232C49C7'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='8' fill='%23B5651D'/%3E%3Ctext x='32' y='45' font-family='monospace' font-weight='bold' font-size='38' fill='%23EDEAE3' text-anchor='middle'%3ED%3C/text%3E%3C/svg%3E">
+  <style>
+    /* Page-load entrance for the art panel — a single orchestrated moment */
+    .auth-pane-art { animation: art-in .7s var(--ease-out) both; }
+    .auth-pane-form { animation: form-in .5s .1s var(--ease-out) both; opacity: 0; }
+    @keyframes art-in {
+      from { opacity: 0; transform: translateX(-12px); }
+      to { opacity: 1; transform: none; }
+    }
+    @keyframes form-in {
+      from { opacity: 0; transform: translateX(12px); }
+      to { opacity: 1; transform: none; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .auth-pane-art, .auth-pane-form { animation: none; opacity: 1; }
+    }
+  </style>
 </head>
 <body>
   <div class="auth-shell">
-    <div class="auth-card">
-      <span class="eyebrow">Diernus · Portal</span>
-      <h1>Iniciar sessão</h1>
-      <p class="lede">Acompanhe os seus projetos, comente nos cartões e descarregue os ficheiros partilhados.</p>
+    <aside class="auth-pane-art">
+      <div class="art-meta">Diernus · Portal</div>
+      <div class="art-mark" aria-hidden="true">D</div>
+      <p class="art-quote">"Mobiliário por medida, com uma janela aberta para o cliente."</p>
+      <div class="art-foot">
+        <div class="art-meta">PT-PT · Estúdio desde 2026</div>
+      </div>
+    </aside>
 
-      <div id="err" class="error" style="display:none"></div>
+    <main class="auth-pane-form">
+      <div class="form-inner">
+        <span class="eyebrow">Diernus · Portal</span>
+        <h1>Iniciar sessão</h1>
+        <p class="lede">Acompanhe os seus projetos, comente nos cartões e descarregue os ficheiros partilhados.</p>
 
-      <a class="btn-google" id="googleBtn" href="#">
-        <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
-          <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
-        </svg>
-        <span>Continuar com Google</span>
-      </a>
+        <div id="err" class="error" style="display:none"></div>
 
-      <div class="auth-divider"><span>ou</span></div>
+        <a class="btn-google" id="googleBtn" href="#">
+          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+            <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+            <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+            <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+            <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+          </svg>
+          Continuar com Google
+        </a>
 
-      <form id="form" novalidate>
-        <label class="field">
-          <label>Email</label>
-          <input type="email" name="email" required autocomplete="email">
-        </label>
-        <label class="field">
-          <label>Palavra-passe</label>
-          <input type="password" name="password" required autocomplete="current-password" minlength="8">
-        </label>
-        <button class="btn primary" type="submit" id="submit" style="width:100%;justify-content:center;padding:.7rem">Entrar</button>
-      </form>
+        <div class="auth-divider"><span>ou</span></div>
 
-      <p style="margin-top:1rem;font-size:.85rem;text-align:center">
-        <a href="/forgot-password.html" style="color:var(--cobalt)">Esqueci-me da palavra-passe</a>
-      </p>
-    </div>
+        <form id="form" novalidate>
+          <label class="field">
+            <label>Email</label>
+            <input type="email" name="email" required autocomplete="email">
+          </label>
+          <label class="field">
+            <label>Palavra-passe</label>
+            <input type="password" name="password" required autocomplete="current-password" minlength="8">
+          </label>
+          <button class="btn primary" type="submit" id="submit" style="width:100%;justify-content:center;padding:.7rem">Entrar</button>
+        </form>
+
+        <p class="auth-forgot">
+          <a href="/forgot-password.html">Esqueci-me da palavra-passe</a>
+        </p>
+      </div>
+    </main>
   </div>
 
   <script type="module">

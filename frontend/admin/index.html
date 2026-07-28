@@ -19,11 +19,7 @@
     import { api } from '/shared/api.js';
 
     const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
-    const PRIORITY_COLOR = {
-      low:    { bg: 'rgba(35,33,28,.08)',  fg: 'var(--graphite-60)' },
-      medium: { bg: 'rgba(44,73,199,.12)',  fg: 'var(--cobalt)' },
-      high:   { bg: 'rgba(179,35,46,.12)',  fg: 'var(--stamp)' },
-    };
+    const PRIORITY_DOT_CLASS = { low: 'low', medium: 'medium', high: 'high' };
 
     const { me, content } = await renderLayout({ active: 'overview', crumbs: ['Visão geral'] });
     const loading = pageLoading(content, 'A carregar visão geral…');
@@ -115,10 +111,11 @@
             <tbody>${upcoming.map(card => {
               const proj = (b.projects || []).find(p => p.id === card.project_id);
               const [cls, label] = urgencyClass(card.due_date);
-              const p_color = PRIORITY_COLOR[card.priority] || PRIORITY_COLOR.medium;
+              const prioClass = PRIORITY_DOT_CLASS[card.priority] || 'medium';
+              const prioLabel = PRIORITY_LABEL[card.priority] || card.priority || '';
               return `
                 <tr>
-                  <td><span class="cd-pill" style="background:${p_color.bg};color:${p_color.fg}">${PRIORITY_LABEL[card.priority] || card.priority}</span></td>
+                  <td><span class="cd-pill prio-${prioClass}"><span class="pill-dot"></span>${escapeHtml(prioLabel)}</span></td>
                   <td class="name"><a href="/admin/projeto.html?id=${encodeURIComponent(card.project_id)}" style="color:inherit;text-decoration:none">${escapeHtml(card.title)}</a></td>
                   <td>${escapeHtml(proj ? proj.name : '—')}</td>
                   <td><span class="${cls}" style="font-family:var(--mono);font-size:.78rem">${label}</span></td>

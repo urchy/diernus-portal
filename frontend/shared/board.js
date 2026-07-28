@@ -6,11 +6,10 @@ import { api } from './api.js';
 import { $, fmtDate, fmtDateTime, timeAgo, escapeHtml, initials, showToast } from './layout.js';
 
 const PRIORITY_LABEL = { low: 'baixa', medium: 'média', high: 'alta' };
-const PRIORITY_COLOR = {
-  low:    { bg: 'rgba(35,33,28,.08)',  fg: 'var(--graphite-60)' },
-  medium: { bg: 'rgba(44,73,199,.12)',  fg: 'var(--cobalt)' },
-  high:   { bg: 'rgba(179,35,46,.12)',  fg: 'var(--stamp)' },
-};
+// Variant A: priority is a colored 8px dot. Class names (.high/.medium/.low) drive
+// the color in CSS — no inline styles. The accessible name is on the aria-label
+// of the dot, and the human label (alta/média/baixa) is in PRIORITY_LABEL for tooltips.
+const PRIORITY_DOT_CLASS = { low: 'low', medium: 'medium', high: 'high' };
 
 // Tiny PT pluraliser — keeps the count phrase grammatically correct.
 //   pluralise(1, 'cartão', 'cartões')           → "1 cartão"
@@ -137,12 +136,13 @@ function renderCard(card, canEdit) {
   const div = document.createElement('div');
   div.className = 'kcard';
   div.dataset.cardId = card.id;
-  const p = PRIORITY_COLOR[card.priority] || PRIORITY_COLOR.medium;
+  const prioClass = PRIORITY_DOT_CLASS[card.priority] || 'medium';
+  const prioLabel = PRIORITY_LABEL[card.priority] || card.priority || '';
   const due = card.due_date ? new Date(card.due_date).toLocaleDateString('pt-PT', { day: '2-digit', month: 'short' }) : '';
   const comments = card.comment_count || 0;
   const isOverdue = card.due_date && new Date(card.due_date) < new Date() && card.priority !== 'low';
   div.innerHTML = `
-    <div class="kcard-prio" style="background:${p.bg};color:${p.fg}">${PRIORITY_LABEL[card.priority] || card.priority}</div>
+    <div class="kcard-prio ${prioClass}" role="img" aria-label="Prioridade: ${escapeHtml(prioLabel)}" title="Prioridade: ${escapeHtml(prioLabel)}"></div>
     <div class="kcard-title">${escapeHtml(card.title)}</div>
     <div class="kcard-meta">
       ${due ? `<span class="kcard-due ${isOverdue ? 'overdue' : ''}">${due}</span>` : ''}
@@ -654,8 +654,11 @@ async function openEditMetaModal(project, onSaved) {
 }
 
 function PRIORITY_BADGE(p) {
-  const color = PRIORITY_COLOR[p] || PRIORITY_COLOR.medium;
-  return `<span class="cd-pill" style="background:${color.bg};color:${color.fg}">${PRIORITY_LABEL[p] || p}</span>`;
+  // Variant A: pill with a colored dot prefix. The .cd-pill.prio-{low|medium|high}
+  // class drives the colour; no inline styles.
+  const cls = PRIORITY_DOT_CLASS[p] || 'medium';
+  const label = PRIORITY_LABEL[p] || p || '';
+  return `<span class="cd-pill prio-${cls}"><span class="pill-dot"></span>${escapeHtml(label)}</span>`;
 }
 
 // ---- Summary header (rendered between page-head and the kanban) ----
@@ -684,7 +687,7 @@ function buildSummaryHeader(project, summary, canEdit) {
     return d.toLocaleDateString('pt-PT', { day: '2-digit', month: 'short', year: 'numeric' });
   })();
   const budgetPct = summary.budget_consumed_pct;
-  const budgetTone = budgetPct == null ? '' : (budgetPct >= 100 ? 'summary-bill-over' : budgetPct >= 80 ? 'summary-bill-warn' : '');
+  const budgetTone = budgetPct == null ? '' : (budgetPct >= 100 ? 'over' : budgetPct >= 80 ? 'warn' : '');
   wrap.innerHTML = `
     <div class="summary-card">
       <div class="summary-label">Progresso</div>
@@ -702,9 +705,9 @@ function buildSummaryHeader(project, summary, canEdit) {
       <div class="summary-value">${formatHours(summary.total_actual_hours)}<small>h</small></div>
       <div class="summary-sub">${formatHours(summary.total_estimated_hours)}h estimadas${project.budget_hours != null ? ' · ' + formatHours(project.budget_hours) + 'h orçamento' : ''}</div>
     </div>
-    <div class="summary-card">
+    <div class="summary-card ${budgetTone}">
       <div class="summary-label">Orçamento</div>
-      <div class="summary-value ${budgetTone}">${budgetPct == null ? '—' : budgetPct + '<small>%</small>'}</div>
+      <div class="summary-value">${budgetPct == null ? '—' : budgetPct + '<small>%</small>'}</div>
       <div class="summary-sub">${budgetPct == null ? 'sem orçamento definido' : `${formatHours(summary.total_actual_hours)}h / ${formatHours(project.budget_hours)}h`}</div>
     </div>
     <div class="summary-card">

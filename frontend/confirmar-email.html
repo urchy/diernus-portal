@@ -36,7 +36,7 @@
 
     function renderLoading() {
       app.innerHTML = `
-        <div class="auth-shell">
+        <div class="auth-shell-single">
           <div class="auth-card">
             <span class="eyebrow">Diernus</span>
             <h1>A confirmar…</h1>
@@ -49,7 +49,7 @@
     }
     function renderSuccess(newEmail) {
       app.innerHTML = `
-        <div class="auth-shell">
+        <div class="auth-shell-single">
           <div class="auth-card">
             <span class="eyebrow">Diernus</span>
             <h1>Email atualizado</h1>
@@ -62,7 +62,7 @@
     }
     function renderError(title, msg) {
       app.innerHTML = `
-        <div class="auth-shell">
+        <div class="auth-shell-single">
           <div class="auth-card">
             <span class="eyebrow" style="color:var(--stamp)">Diernus</span>
             <h1>${escapeHtml(title)}</h1>
