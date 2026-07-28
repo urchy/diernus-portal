@@ -33,6 +33,9 @@ const NAV_BASE = {
     { group: 'COMUNICAÇÃO', items: [
       { key: 'invites',   label: 'Convites',    href: '/admin/convites.html' },
     ]},
+    { group: 'CONTA', items: [
+      { key: 'profile', label: 'Perfil', href: '/perfil.html' },
+    ]},
   ],
   team: [
     { group: 'GERAL',    items: [
@@ -48,6 +51,9 @@ const NAV_BASE = {
     { group: 'COMUNICAÇÃO', items: [
       { key: 'invites',   label: 'Convites',    href: '/admin/convites.html' },
     ]},
+    { group: 'CONTA', items: [
+      { key: 'profile', label: 'Perfil', href: '/perfil.html' },
+    ]},
   ],
   client: [
     { group: 'GERAL', items: [
@@ -57,7 +63,7 @@ const NAV_BASE = {
       { key: 'projects', label: 'Meus projetos', href: '/portal/' },
     ]},
     { group: 'CONTA', items: [
-      { key: 'profile', label: 'Perfil', href: '/portal/perfil.html' },
+      { key: 'profile', label: 'Perfil', href: '/perfil.html' },
     ]},
   ],
 };

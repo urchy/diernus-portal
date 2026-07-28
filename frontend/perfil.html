@@ -2,7 +2,7 @@
 <html lang="pt">
 <head>
   <meta charset="UTF-8">
-  <title>Perfil · Diernus Portal</title>
+  <title>Perfil · Diernus</title>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <!-- API base: change ONE LINE at cutover (matches login.html). -->
   <meta name="api-base" content="https://diernus-portal-api.diernus.com">
@@ -17,6 +17,8 @@
   <script type="module">
     import { renderLayout, escapeHtml, showToast } from '/shared/layout.js';
     import { api } from '/shared/api.js';
+    // Lives at the top level (/perfil.html) so admin, team, AND client
+    // can reach it. The layout picks the right sidebar based on role.
     const { me, content } = await renderLayout({ active: 'profile', crumbs: ['Conta', 'Perfil'] });
     const initial = (me.name || me.email).trim().charAt(0).toUpperCase();
 
@@ -107,9 +109,6 @@
       submit.disabled = true; submit.textContent = 'A guardar…';
       try {
         const { user } = await api.updateMyProfile({ name });
-        // The user.name we have in JS is stale; the layout (sidebar) shows
-        // the old name until reload. Easiest fix: reload — the layout
-        // re-fetches /me on every page.
         showToast('Nome atualizado');
         setTimeout(() => location.reload(), 600);
       } catch (err) {
@@ -129,7 +128,6 @@
       try {
         const { emailChange } = await api.updateMyProfile({ newEmail, currentPassword });
         if (emailChange) {
-          // Show a more informative toast — they need to check the NEW inbox
           const t = document.createElement('div');
           t.className = 'toast on';
           t.style.maxWidth = '420px';
@@ -164,9 +162,6 @@
         const { passwordChanged } = await api.updateMyProfile({ currentPassword, newPassword });
         e.target.reset();
         if (passwordChanged) {
-          // The current JWT is now invalid (password_changed_at > iat). The
-          // next request will 401 and bounce to /login. We tell the user
-          // and trigger the bounce manually so the UX is consistent.
           const t = document.createElement('div');
           t.className = 'toast on';
           t.style.maxWidth = '420px';
