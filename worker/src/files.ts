@@ -78,7 +78,7 @@ fileRoutes.post('/projects/:id/files', async (c) => {
     return c.json({ error: `ficheiro demasiado grande (máx. ${maxMb} MB)` }, 400);
   }
   // optional mime guard
-  if (ALLOWED_MIME && !ALLOWED_MIME.includes((file as any).type)) {
+  if (ALLOWED_MIME && !(ALLOWED_MIME as readonly string[]).includes(file.type)) {
     return c.json({ error: `tipo não permitido: ${file.type}` }, 400);
   }
   // if a card_id was provided, make sure it belongs to this project

@@ -314,7 +314,6 @@ cardRoutes.patch('/cards/:id', requireStudio, async (c) => {
     });
   }
   if (body.assignee_id !== undefined && body.assignee_id !== existing.assignee_id) {
-    const wasUnassigned = existing.assignee_id && !body.assignee_id;
     const isUnassigned = !body.assignee_id;
     // Look up the new assignee's name for the "to" value
     let toName: string | null = null;
