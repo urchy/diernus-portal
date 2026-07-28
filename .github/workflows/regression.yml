@@ -1,0 +1,74 @@
+# GitHub Actions — Diernus Portal regression
+#
+# Runs the 91-assertion regression suite against the staging environment
+# on every PR and on every push to main. Catches most regressions before
+# they reach production.
+#
+# The staging D1 must already have the test fixtures (created via
+# scripts/seed-staging.sh). If the seed is stale or missing, several
+# assertions will fail — re-run the seed locally to refresh.
+#
+# Required GitHub Secrets (Settings → Secrets → Actions):
+#   STAGING_API  — the staging Worker URL, e.g.
+#                   https://diernus-portal-api-staging.silva-andre-daniel.workers.dev/api
+#   STAGING_WEB  — the staging frontend URL, e.g.
+#                   https://diernus-portal-staging.pages.dev
+#
+# The workflow checks out the repo, sets up Node + wrangler, then runs
+# tests/regression.sh. The script auto-detects the staging URL and uses
+# the fixtures in tests/.staging-fixtures.json (which is gitignored — so
+# each environment needs its own copy committed at tests/.staging-fixtures.json
+# if you want this CI to be fully self-contained).
+
+name: regression
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-staging:
+    name: regression / staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      API: ${{ secrets.STAGING_API }}
+      WEB: ${{ secrets.STAGING_WEB }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Show env
+        run: |
+          echo "API=$API"
+          echo "WEB=$WEB"
+          echo "fixtures: $(ls -la tests/.staging-fixtures.json 2>/dev/null || echo 'absent — run scripts/seed-staging.sh locally to create one')"
+
+      - name: Run regression
+        run: |
+          # The script auto-detects staging from the API URL. It will pick
+          # up tests/.staging-fixtures.json if present, else fall back to
+          # the hardcoded production fixtures (which won't exist on
+          # staging, so the staging-specific tests will fail).
+          bash tests/regression.sh 2>&1 | tee /tmp/staging-regr.log
+          # The script exits 0 on success, 1 on failure — pass that through
+          # so the GH check status reflects the actual result.
+          "${PIPESTATUS[0]}" > /tmp/regr-exit
+          exit "$(cat /tmp/regr-exit)"
+
+      - name: Report status
+        if: always()
+        run: |
+          # Print a tail of the regression log for context in the run UI
+          echo "----- regression log (tail) -----"
+          tail -40 /tmp/staging-regr.log 2>/dev/null || echo "(no log captured)"
+          echo "----- exit code: $(cat /tmp/regr-exit 2>/dev/null || echo 'unknown') -----"
