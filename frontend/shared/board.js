@@ -41,7 +41,7 @@ export async function mountBoard(mountEl, projectId, access) {
     </div>
     <div class="board-meta">
       ${project.hourly_rate != null
-        ? `<span class="meta-pill"><span class="meta-label">€/hora</span><span class="meta-value">${Number(project.hourly_rate).toFixed(0)} €</span></span>` : ''}
+        ? `<span class="meta-pill"><span class="meta-label">€/hora</span><span class="meta-value">${formatPrice(project.hourly_rate)}</span></span>` : ''}
       ${project.budget_hours != null
         ? `<span class="meta-pill"><span class="meta-label">orçamento</span><span class="meta-value">${formatHours(project.budget_hours)} h</span></span>` : ''}
       <span class="meta-pill"><span class="meta-label">cartões</span><span class="meta-value">${cards.length}</span></span>
@@ -610,7 +610,7 @@ async function openEditMetaModal(project, onSaved) {
       <h2>Projeto · detalhes</h2>
       <div class="error" id="err" style="display:none"></div>
       <form id="form">
-        <label class="field"><label>Preço por hora (€)</label><input type="number" name="hourly_rate" step="1" min="0" value="${project.hourly_rate ?? ''}"></label>
+        <label class="field"><label>Preço por hora (€)</label><input type="number" name="hourly_rate" step="0.01" min="0" value="${project.hourly_rate ?? ''}"></label>
         <label class="field"><label>Orçamento total (horas)</label><input type="number" name="budget_hours" step="0.5" min="0" value="${project.budget_hours ?? ''}"></label>
         <label class="field"><label>Prazo do projeto</label><input type="date" name="due_date" value="${project.due_date ?? ''}"></label>
         <label class="field"><label>Estado</label>
@@ -988,6 +988,17 @@ function formatHours(h) {
   if (h == null) return '';
   if (Number.isInteger(h)) return String(h);
   return h.toFixed(1).replace(/\.0$/, '');
+}
+
+// formatPrice — show hourly_rate with up to 2 decimals (trim trailing ".00").
+//   35    -> "35 €"
+//   35.5  -> "35.50 €"
+//   35.75 -> "35.75 €"
+//   null  -> "—"
+function formatPrice(n) {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
+  const v = Number(n);
+  return v.toFixed(2).replace(/\.00$/, '') + ' €';
 }
 
 let sortableLoaded = null;

@@ -103,8 +103,8 @@ export async function mountMultiBoard(mountEl) {
         `${proj.client_name} · ${cards.filter(c => c.project_id === proj.id).length} cartões`;
       const isClosed = proj.status !== 'active';
       meta.innerHTML = `
-        <span class="meta-pill"><span class="meta-label">€/hora</span><span class="meta-value">${proj.hourly_rate != null ? Number(proj.hourly_rate).toFixed(0) + ' €' : '—'}</span></span>
-        <span class="meta-pill"><span class="meta-label">orçamento</span><span class="meta-value">${proj.budget_hours != null ? proj.budget_hours + ' h' : '—'}</span></span>
+        <span class="meta-pill"><span class="meta-label">€/hora</span><span class="meta-value">${formatPrice(proj.hourly_rate)}</span></span>
+        <span class="meta-pill"><span class="meta-label">orçamento</span><span class="meta-value">${proj.budget_hours != null ? formatHours(proj.budget_hours) + ' h' : '—'}</span></span>
         <a class="btn sm ghost" href="/admin/projeto.html?id=${encodeURIComponent(proj.id)}">Abrir projeto ›</a>
         ${!isClosed
           ? `<button class="btn sm ghost" id="closeProject" style="color:var(--stamp)">Fechar projeto</button>`
@@ -362,6 +362,15 @@ function formatHours(h) {
   if (h == null) return '';
   if (Number.isInteger(h)) return String(h);
   return h.toFixed(1).replace(/\.0$/, '');
+}
+
+// formatPrice — show hourly_rate with up to 2 decimals (trim trailing ".00").
+//   35    -> "35 €"      35.5  -> "35.50 €"      35.75 -> "35.75 €"
+//   null  -> "—"
+function formatPrice(n) {
+  if (n == null || !Number.isFinite(Number(n))) return '—';
+  const v = Number(n);
+  return v.toFixed(2).replace(/\.00$/, '') + ' €';
 }
 
 let sortableLoaded = null;

@@ -63,6 +63,7 @@ projectRoutes.get('/:id', async (c) => {
 });
 
 // PATCH /api/projects/:id — update (admin + team). Status, name, description, hourly_rate, budget_hours.
+// hourly_rate and budget_hours accept floats (REAL in D1). We reject NaN/Infinity/out-of-range.
 projectRoutes.patch('/:id', requireStudio, async (c) => {
   const existing = await c.env.DB
     .prepare('SELECT id FROM projects WHERE id = ?')
@@ -71,6 +72,27 @@ projectRoutes.patch('/:id', requireStudio, async (c) => {
   if (!existing) return c.json({ error: 'projeto não encontrado' }, 404);
   const body = await c.req.json().catch(() => null) as Partial<Project> | null;
   if (!body) return c.json({ error: 'payload vazio' }, 400);
+
+  // Validate numeric fields when present. Empty string → null (clear the field).
+  // Body is typed as Partial<Project> but in practice clients may send a string
+  // (e.g. "" from FormData); coerce defensively.
+  const rawRate = body.hourly_rate as unknown;
+  if (rawRate !== undefined && rawRate !== null && rawRate !== '') {
+    const r = Number(rawRate);
+    if (!Number.isFinite(r) || r < 0 || r > 10000) {
+      return c.json({ error: 'preço por hora inválido (0–10000 €)' }, 400);
+    }
+    body.hourly_rate = Math.round(r * 100) / 100; // normalise to 2 dp
+  }
+  const rawBudget = body.budget_hours as unknown;
+  if (rawBudget !== undefined && rawBudget !== null && rawBudget !== '') {
+    const h = Number(rawBudget);
+    if (!Number.isFinite(h) || h < 0 || h > 100000) {
+      return c.json({ error: 'orçamento de horas inválido (0–100000 h)' }, 400);
+    }
+    body.budget_hours = Math.round(h * 100) / 100; // normalise to 2 dp
+  }
+
   const allowed: (keyof Project)[] = ['name', 'description', 'status', 'hourly_rate', 'budget_hours', 'due_date'];
   const sets: string[] = [];
   const args: any[] = [];
