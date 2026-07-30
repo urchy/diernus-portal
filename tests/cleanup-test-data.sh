@@ -24,11 +24,14 @@ cd "$(dirname "$0")/../worker"
 export PATH="/opt/homebrew/bin:$PATH"
 
 # ---------- what to delete ----------
+# Only test/throwaway accounts go here. Real user accounts (including
+# andre@diernus.com, natalinacarmo@gmail.com, miguelvsu@gmail.com, and the
+# user's personal silva.andre.daniel@gmail.com client account) MUST NOT be
+# in this list — cleanup-test-data.sh would delete them.
 TEST_EMAILS=(
   "joao.cliente@gmail.com"
   "verify.test@gmail.com"
   "test.notif@gmail.com"
-  "silva.andre.daniel@gmail.com"
 )
 TEST_CARD_ID="900eee35-96be-4f84-88ce-3252614e47fb"
 
