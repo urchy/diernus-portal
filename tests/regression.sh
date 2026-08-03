@@ -108,6 +108,68 @@ fi
 # so we don't need any pre-loaded fixtures. The legacy .staging-fixtures.json
 # file is no longer referenced by this script — the test is fully self-contained.
 
+# ---------- trap: ALWAYS clean up the data this run created ----------
+# Rule: every regression run must clean up after itself. The trap fires on
+# ANY exit (success, assertion failure, bash error, SIGTERM from the cron
+# timeout, Ctrl-C) — not just the happy path. Skipping this is how prod and
+# staging D1s accumulated 8–9 stale REG-TEST projects per environment.
+#
+# What it cleans:
+#   - the test file (R2 + D1 row)
+#   - the test card (D1, cascades to time entries, comments, card_history)
+#   - the test project (D1, set to archived — D1 has no DELETE /api/projects route)
+#   - the pending test CLIENT is left here on purpose: it can't be deleted via
+#     the API once it owns a project. Run `bash tests/cleanup-regression-data.sh`
+#     periodically to wipe it (and any REG-TEST leftovers from prior runs that
+#     hit a timeout before this trap was added).
+
+# Track IDs for the trap. Initialized here as empty so the trap is safe to
+# fire before the test-data section has run.
+TEST_FILE_ID=""
+TEST_CARD_ID=""
+TEST_ENTRY_ID=""
+TEST_PROJECT_ID=""
+TEST_CLIENT_ID=""
+
+cleanup_on_exit() {
+  local rc=$?  # preserve original exit code
+  # Only attempt cleanup if login was successful (cookie jar exists).
+  if [ ! -f /tmp/c-admin.txt ]; then
+    return $rc
+  fi
+  # --max-time 15: fail fast if the API is hung, so the trap doesn't itself
+  # hang the cron past its timeout.
+  local C="curl -sS --max-time 15 -b /tmp/c-admin.txt"
+  printf '\n\033[1m[trap] Cleanup (always runs, even on failure/timeout)\033[0m\n'
+  if [ -n "${TEST_FILE_ID:-}" ]; then
+    if $C -X DELETE "$API/files/${TEST_FILE_ID}" >/dev/null 2>&1; then
+      printf '  \033[32m✓\033[0m deleted test file %s\n' "$TEST_FILE_ID"
+    else
+      printf '  \033[33m~\033[0m could not delete test file %s (already gone or API down)\n' "$TEST_FILE_ID"
+    fi
+  fi
+  if [ -n "${TEST_CARD_ID:-}" ]; then
+    if $C -X DELETE "$API/cards/${TEST_CARD_ID}" >/dev/null 2>&1; then
+      printf '  \033[32m✓\033[0m deleted test card %s\n' "$TEST_CARD_ID"
+    else
+      printf '  \033[33m~\033[0m could not delete test card %s (already gone or API down)\n' "$TEST_CARD_ID"
+    fi
+  fi
+  if [ -n "${TEST_PROJECT_ID:-}" ]; then
+    if $C -X PATCH "$API/projects/${TEST_PROJECT_ID}" -H "Content-Type: application/json" -d '{"status":"archived"}' >/dev/null 2>&1; then
+      printf '  \033[32m✓\033[0m archived test project %s\n' "$TEST_PROJECT_ID"
+    else
+      printf '  \033[33m~\033[0m could not archive test project %s (already gone or API down)\n' "$TEST_PROJECT_ID"
+    fi
+  fi
+  if [ -n "${TEST_CLIENT_ID:-}" ]; then
+    printf '  \033[36m•\033[0m test client %s (email %s) is pending — wipe via cleanup-regression-data.sh\n' \
+      "$TEST_CLIENT_ID" "regression-*@diernus.test"
+  fi
+  return $rc
+}
+trap cleanup_on_exit EXIT
+
 # ---------- setup: create test data ----------
 hr "Setup — create test data (env=$ENV_NAME)"
 TS=$(date +%s)
@@ -767,30 +829,11 @@ for marker in '.proj-tabs' '.cd-file-thumb' '.preview-back' '.cd-time-edit' '.pr
 done
 
 # =========================================================================
-# [22] CLEANUP — remove what we can
+# [22] CLEANUP — done by `trap cleanup_on_exit EXIT` (see top of file).
+# Always runs, even on failure / timeout. The section is here as a marker
+# so the test numbering is visible in the output.
 # =========================================================================
-hr "[22] Cleanup"
-# Order matters: file → card → project. Deleting the card CASCADEs to the file,
-# so we delete the file first while we still have its ID.
-# The TEST_CLIENT is left as 'pending' (will be wiped by cleanup-test-data.sh)
-
-if [ -n "$TEST_FILE_ID" ]; then
-  S=$(status -b /tmp/c-admin.txt -X DELETE "$API/files/${TEST_FILE_ID}")
-  assert_eq "  DELETE test file" "200" "$S"
-fi
-
-if [ -n "$TEST_CARD_ID" ]; then
-  S=$(status -b /tmp/c-admin.txt -X DELETE "$API/cards/${TEST_CARD_ID}")
-  assert_eq "  DELETE test card" "200" "$S"
-fi
-
-if [ -n "$TEST_PROJECT_ID" ]; then
-  S=$(status -b /tmp/c-admin.txt -X PATCH "$API/projects/${TEST_PROJECT_ID}" \
-    -H "Content-Type: application/json" -d '{"status":"archived"}')
-  assert_eq "  archive test project" "200" "$S"
-fi
-
-# Note: TEST_CLIENT_ID is left as 'pending' — wipe via cleanup-test-data.sh
+hr "[22] Cleanup (trap, see top of file)"
 
 # =========================================================================
 # Summary
