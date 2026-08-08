@@ -25,20 +25,20 @@ ENVIRONMENT = "production"
 MAX_UPLOAD_MB = "50"
 
 # Cron triggers (top-level = default env = production).
+# All scheduled work was DISABLED on 2026-08-08 at the user's request.
+# The Worker code in src/cron.ts (runWeeklySummary, runCardOverdueCheck,
+# runProjectOverdueCheck) is still exported and reachable via the
+# `scheduled` handler, but Cloudflare will not invoke it without triggers
+# registered here. To re-enable, restore the array below and redeploy.
 #   "0 8 * * 1"   = every Monday at 08:00 UTC = 09:00 Europe/Lisbon
 #                    (weekly summary)
 #   "0 9 * * *"   = every day at 09:00 UTC = 10:00 Lisbon (summer) /
 #                    09:00 Lisbon (winter).  Runs both the card_overdue
 #                    and project_overdue checks (see src/cron.ts).
-# All scheduled work is dispatched in src/cron.ts.
-# Staging is excluded explicitly below so test seeds don't trigger
-# emails to real addresses.
 [triggers]
-crons = ["0 8 * * 1", "0 9 * * *"]
+crons = []
 
-# Explicit empty cron for staging — overrides the top-level triggers.
-# Without this override, staging would inherit "0 8 * * 1" and try to
-# email the seeded studio members every Monday.
+# Staging is also empty (no scheduled work here either).
 [env.staging.triggers]
 crons = []
 
